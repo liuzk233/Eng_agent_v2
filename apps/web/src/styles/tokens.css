@@ -1,0 +1,83 @@
+:root {
+  color-scheme: light;
+
+  --color-brand: oklch(0.72 0.16 145);
+  --color-brand-deep: oklch(0.58 0.17 145);
+  --color-brand-soft: oklch(0.92 0.07 145);
+  --color-brand-veil: oklch(0.96 0.035 145);
+  --color-bg: oklch(0.985 0.012 92);
+  --color-sidebar: oklch(0.965 0.018 105);
+  --color-surface: oklch(0.998 0.008 96);
+  --color-surface-warm: oklch(0.975 0.018 88);
+  --color-text-primary: oklch(0.22 0.025 128);
+  --color-text-secondary: oklch(0.44 0.035 128);
+  --color-text-tertiary: oklch(0.62 0.035 128);
+  --color-border: oklch(0.88 0.035 116);
+  --color-danger: oklch(0.60 0.16 28);
+  --color-warning: oklch(0.74 0.13 78);
+
+  --font-display: "Fraunces", Georgia, serif;
+  --font-headline: "Fraunces", Georgia, serif;
+  --font-body: "Nunito Sans", "Avenir Next", sans-serif;
+  --font-reading: "Lora", Georgia, serif;
+  --font-label: "Nunito Sans", "Avenir Next", sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", monospace;
+
+  --text-display-size: clamp(2rem, 5vw, 3.5rem);
+  --text-display-weight: 720;
+  --text-display-line: 1.05;
+  --text-headline-size: clamp(1.5rem, 3vw, 2.25rem);
+  --text-headline-weight: 680;
+  --text-headline-line: 1.12;
+  --text-title-size: 1.125rem;
+  --text-title-weight: 760;
+  --text-title-line: 1.3;
+  --text-body-size: 1rem;
+  --text-body-weight: 450;
+  --text-body-line: 1.6;
+  --text-reading-size: 1.0625rem;
+  --text-reading-weight: 400;
+  --text-reading-line: 1.72;
+  --text-supporting-size: 0.9375rem;
+  --text-supporting-weight: 450;
+  --text-supporting-line: 1.5;
+  --text-label-size: 0.8125rem;
+  --text-label-weight: 780;
+  --text-label-tracking: 0.02em;
+  --text-micro-label-size: 0.75rem;
+  --text-micro-label-weight: 720;
+  --text-mono-size: 0.8125rem;
+  --text-mono-weight: 500;
+  --text-mono-line: 1.45;
+
+  --space-xs: 8px;
+  --space-sm: 14px;
+  --space-md: 22px;
+  --space-lg: 34px;
+  --space-xl: 52px;
+  --space-2xl: 84px;
+  --space-3xl: 128px;
+
+  --radius-none: 0;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-duration-fast: 150ms;
+  --motion-duration-base: 300ms;
+  --motion-duration-slow: 650ms;
+
+  --shadow-hover-lift: 0 8px 24px -14px oklch(0.28 0.04 128 / 0.22);
+  --shadow-focus-ring: 0 0 0 3px oklch(0.88 0.09 145 / 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration-fast: 1ms;
+    --motion-duration-base: 1ms;
+    --motion-duration-slow: 1ms;
+  }
+}

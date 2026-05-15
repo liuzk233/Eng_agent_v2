@@ -1,0 +1,87 @@
+.text-display {
+  color: var(--color-text-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-display-size);
+  font-weight: var(--text-display-weight);
+  letter-spacing: 0;
+  line-height: var(--text-display-line);
+  text-wrap: balance;
+}
+
+.text-headline {
+  color: var(--color-text-primary);
+  font-family: var(--font-headline);
+  font-size: var(--text-headline-size);
+  font-weight: var(--text-headline-weight);
+  letter-spacing: 0;
+  line-height: var(--text-headline-line);
+  text-wrap: balance;
+}
+
+.text-title {
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: var(--text-title-size);
+  font-weight: var(--text-title-weight);
+  letter-spacing: 0;
+  line-height: var(--text-title-line);
+  text-wrap: pretty;
+}
+
+.text-body {
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: var(--text-body-size);
+  font-weight: var(--text-body-weight);
+  letter-spacing: 0;
+  line-height: var(--text-body-line);
+  text-wrap: pretty;
+}
+
+.text-reading {
+  color: var(--color-text-primary);
+  font-family: var(--font-reading);
+  font-size: var(--text-reading-size);
+  font-weight: var(--text-reading-weight);
+  letter-spacing: 0;
+  line-height: var(--text-reading-line);
+  max-width: 72ch;
+  text-wrap: pretty;
+}
+
+.text-supporting {
+  color: var(--color-text-secondary);
+  font-family: var(--font-body);
+  font-size: var(--text-supporting-size);
+  font-weight: var(--text-supporting-weight);
+  letter-spacing: 0;
+  line-height: var(--text-supporting-line);
+  text-wrap: pretty;
+}
+
+.text-label,
+.text-micro-label {
+  color: var(--color-text-secondary);
+  font-family: var(--font-label);
+  font-weight: var(--text-label-weight);
+  letter-spacing: var(--text-label-tracking);
+  line-height: 1.2;
+}
+
+.text-label {
+  font-size: var(--text-label-size);
+}
+
+.text-micro-label {
+  font-size: var(--text-micro-label-size);
+  font-weight: var(--text-micro-label-weight);
+}
+
+.text-mono {
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-size);
+  font-weight: var(--text-mono-weight);
+  letter-spacing: 0;
+  line-height: var(--text-mono-line);
+}
