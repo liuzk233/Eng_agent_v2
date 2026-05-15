@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+apps/web/node_modules/
+
+# Local Python dependency targets
+.tools/
+apps/api/.tools/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node/Vite build and cache outputs
+dist/
+build/
+coverage/
+.vite/
+.turbo/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Local runtime files
+*.log
+*.pid
+scripts/dev/logs/
+scripts/dev/.pids/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.claude/
+.idea/
+.vscode/
+
+# Local tooling assets
+src/ui-ux-pro-max/
+
+# Generated previews
+apps/web/*preview*.png
+
+# Generated local databases
+*.sqlite
+*.sqlite3
+*.db
