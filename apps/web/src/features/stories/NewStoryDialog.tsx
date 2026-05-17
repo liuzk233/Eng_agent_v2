@@ -38,18 +38,6 @@ export function NewStoryDialog({ open, onClose, onSubmit }: NewStoryDialogProps)
       <form className="dialog-content" onSubmit={handleSubmit}>
         <h2 className="text-title">新建故事</h2>
 
-        <div className="auth-field">
-          <label htmlFor="new-story-target-words">目标单词</label>
-          <input
-            id="new-story-target-words"
-            type="text"
-            value={targetWordsText}
-            onChange={(e) => setTargetWordsText(e.target.value)}
-            required
-            placeholder="输入第一章要练习的单词，用逗号或空格分隔"
-          />
-        </div>
-
         <fieldset className="auth-field">
           <legend>故事风格</legend>
           {STORY_STYLE_OPTIONS.map((opt) => (
@@ -85,6 +73,18 @@ export function NewStoryDialog({ open, onClose, onSubmit }: NewStoryDialogProps)
           {isExamReading && (
             <span className="text-supporting">应试阅读固定为 1 章</span>
           )}
+        </div>
+
+        <div className="auth-field">
+          <label htmlFor="new-story-target-words">目标单词</label>
+          <input
+            id="new-story-target-words"
+            type="text"
+            value={targetWordsText}
+            onChange={(e) => setTargetWordsText(e.target.value)}
+            required
+            placeholder="输入第一章要练习的单词，用逗号或空格分隔"
+          />
         </div>
 
         <div className="dialog-actions">

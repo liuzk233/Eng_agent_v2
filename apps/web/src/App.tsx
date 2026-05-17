@@ -103,6 +103,7 @@ function StoryApp() {
       selectedStoryId={selectedStoryId}
       onSelectStory={setSelectedStoryId}
       onNewStory={() => setDialogOpen(true)}
+      onHome={() => setSelectedStoryId(null)}
     />
   );
 
@@ -155,7 +156,37 @@ function StoryApp() {
     </ConversationView>
   ) : (
     <div className="conversation-empty">
-      <p className="text-body">选择一个故事，或新建故事开始按章节记忆单词。</p>
+      <section className="empty-hero" aria-labelledby="empty-hero-title">
+        <p className="auth-kicker">Story workspace</p>
+        <h2 id="empty-hero-title" className="text-headline">把单词放进一段会继续生长的故事里</h2>
+        <p className="text-body">选择一个故事，或新建故事开始按章节记忆单词。</p>
+        <div className="empty-hero-actions">
+          <button type="button" className="story-new-btn story-new-btn--large" onClick={() => setDialogOpen(true)}>
+            新建故事
+          </button>
+          <span className="text-supporting">
+            {isLoading ? "正在同步故事列表" : `${stories.length} 个故事已就绪`}
+          </span>
+        </div>
+      </section>
+
+      <section className="empty-module-grid" aria-label="学习流程">
+        <article className="empty-module">
+          <span className="empty-module-index text-micro-label">01</span>
+          <h3 className="text-title">输入目标词</h3>
+          <p className="text-supporting">每章建议 7 个词，最多 10 个词，系统会把它们自然写入英文正文。</p>
+        </article>
+        <article className="empty-module">
+          <span className="empty-module-index text-micro-label">02</span>
+          <h3 className="text-title">选择叙事风格</h3>
+          <p className="text-supporting">网络爽文、科幻小说或应试阅读，适配不同记忆场景。</p>
+        </article>
+        <article className="empty-module">
+          <span className="empty-module-index text-micro-label">03</span>
+          <h3 className="text-title">按章节复习</h3>
+          <p className="text-supporting">保留故事连续性和中文释义，让复习更像阅读而不是背表格。</p>
+        </article>
+      </section>
     </div>
   );
 
