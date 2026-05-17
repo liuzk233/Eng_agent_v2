@@ -1,4 +1,8 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 class Settings(BaseSettings):
@@ -21,7 +25,12 @@ class Settings(BaseSettings):
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     dashscope_model: str = "qwen3.5-122b-a10b"
 
-    model_config = SettingsConfigDict(env_prefix="VSL_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="VSL_",
+        env_file=(_REPO_ROOT / ".env", ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     def require_jwt_secret(self) -> str:
         secret = self.jwt_secret.strip()

@@ -11,6 +11,22 @@ $apiRoot = Join-Path $repoRoot "apps\api"
 $webRoot = Join-Path $repoRoot "apps\web"
 $logDir = Join-Path $PSScriptRoot "logs"
 $pidDir = Join-Path $PSScriptRoot ".pids"
+$envFile = Join-Path $repoRoot ".env"
+
+if (Test-Path $envFile) {
+    Get-Content $envFile | ForEach-Object {
+        $line = $_.Trim()
+        if (-not $line -or $line.StartsWith("#") -or -not $line.Contains("=")) {
+            return
+        }
+        $name, $value = $line.Split("=", 2)
+        $name = $name.Trim()
+        $value = $value.Trim().Trim('"').Trim("'")
+        if ($name -and -not [Environment]::GetEnvironmentVariable($name, "Process")) {
+            [Environment]::SetEnvironmentVariable($name, $value, "Process")
+        }
+    }
+}
 
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 New-Item -ItemType Directory -Path $pidDir -Force | Out-Null
@@ -37,6 +53,10 @@ $env:VSL_CELERY_RESULT_BACKEND = if ($env:VSL_CELERY_RESULT_BACKEND) { $env:VSL_
 $env:VSL_CORS_ORIGINS = if ($env:VSL_CORS_ORIGINS) { $env:VSL_CORS_ORIGINS } else { "http://localhost:$WebPort,http://127.0.0.1:$WebPort" }
 $env:VITE_API_BASE_URL = "http://$HostName`:$ApiPort"
 $env:PYTHONPATH = ".tools/python;."
+
+if (-not $env:VSL_DASHSCOPE_API_KEY) {
+    Write-Warning "VSL_DASHSCOPE_API_KEY is not set. Generation will use the fixed FakeLLMProvider template; webnovel style UAT cannot validate real LLM output."
+}
 
 $nodeBin = "C:\Users\Sandman\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin"
 if (Test-Path $nodeBin) {

@@ -39,6 +39,9 @@ services:
       VSL_REDIS_URL: redis://redis:6379/0
       VSL_CELERY_BROKER_URL: redis://redis:6379/0
       VSL_CELERY_RESULT_BACKEND: redis://redis:6379/0
+      VSL_DASHSCOPE_API_KEY: ${VSL_DASHSCOPE_API_KEY:-}
+      VSL_DASHSCOPE_BASE_URL: ${VSL_DASHSCOPE_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      VSL_DASHSCOPE_MODEL: ${VSL_DASHSCOPE_MODEL:-qwen3.5-122b-a10b}
     ports:
       - "8000:8000"
     depends_on:
@@ -62,6 +65,9 @@ services:
       VSL_REDIS_URL: redis://redis:6379/0
       VSL_CELERY_BROKER_URL: redis://redis:6379/0
       VSL_CELERY_RESULT_BACKEND: redis://redis:6379/0
+      VSL_DASHSCOPE_API_KEY: ${VSL_DASHSCOPE_API_KEY:-}
+      VSL_DASHSCOPE_BASE_URL: ${VSL_DASHSCOPE_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      VSL_DASHSCOPE_MODEL: ${VSL_DASHSCOPE_MODEL:-qwen3.5-122b-a10b}
     depends_on:
       db:
         condition: service_healthy
