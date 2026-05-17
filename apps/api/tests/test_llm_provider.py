@@ -12,6 +12,7 @@ from app.integrations.llm.fake_provider import FakeLLMProvider
 from app.integrations.llm.prompts import (
     CHAPTER_GENERATION_SYSTEM_PROMPT,
     STYLE_NAMES,
+    WEB_NOVEL_FEW_SHOT_GUIDE,
     build_chapter_user_prompt,
 )
 
@@ -131,6 +132,69 @@ class TestPrompts:
         assert "adventure" in prompt
         assert "courage" in prompt
         assert "网络爽文" in prompt
+
+    def test_web_novel_prompt_includes_original_few_shot_guide(self):
+        prompt = build_chapter_user_prompt(
+            target_words=["decision", "chance"],
+            style=StoryStyle.web_novel,
+            chapter_number=1,
+            target_chapter_count=5,
+        )
+
+        assert "原创网文 few-shot" in prompt
+        assert "压迫感开场" in prompt
+        assert "反转爆发" in prompt
+        assert "结尾钩子" in prompt
+        assert "Mira" in prompt
+        assert "Ken" in prompt
+
+    def test_web_novel_prompt_requires_pressure_structure_and_natural_word_usage(self):
+        prompt = build_chapter_user_prompt(
+            target_words=["exit", "pass", "rate"],
+            style=StoryStyle.web_novel,
+            chapter_number=1,
+            target_chapter_count=5,
+        )
+
+        assert "不是普通儿童探险或平铺直叙" in prompt
+        assert "章节前 80 个英文词内必须出现压迫感开场" in prompt
+        assert "Opening pressure" in prompt
+        assert "Escalation" in prompt
+        assert "Reversal" in prompt
+        assert "不要为了覆盖目标词而硬塞错误词性" in prompt
+        assert "如果目标词是名词，就按名词使用" in prompt
+        assert "不要复制示例人物名、场景、样例目标词或句子" in prompt
+
+    @pytest.mark.parametrize(
+        "style",
+        [StoryStyle.science_fiction, StoryStyle.exam_reading],
+    )
+    def test_non_web_novel_prompt_excludes_web_novel_few_shot(self, style):
+        prompt = build_chapter_user_prompt(
+            target_words=["decision"],
+            style=style,
+            chapter_number=1,
+            target_chapter_count=1,
+        )
+
+        assert "原创网文 few-shot" not in prompt
+        assert "压迫感开场" not in prompt
+        assert "反转爆发" not in prompt
+        assert "结尾钩子" not in prompt
+
+    def test_web_novel_few_shot_avoids_copyrighted_work_markers(self):
+        forbidden_markers = [
+            "斗破苍穹",
+            "武动乾坤",
+            "萧炎",
+            "林动",
+            "斗气",
+            "异火",
+            "大千世界",
+        ]
+
+        for marker in forbidden_markers:
+            assert marker not in WEB_NOVEL_FEW_SHOT_GUIDE
 
     def test_build_chapter_user_prompt_first_chapter(self):
         prompt = build_chapter_user_prompt(
