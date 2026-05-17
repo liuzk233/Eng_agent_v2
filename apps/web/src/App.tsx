@@ -19,7 +19,7 @@ import { GenerationStatusIndicator } from "./features/generation/GenerationStatu
 import { useGenerationTask } from "./features/generation/useGenerationTask";
 import { apiClient } from "./lib/api/client";
 import { queryClient } from "./lib/query/queryClient";
-import type { NewStoryInput, StoryProject } from "./features/stories/storyTypes";
+import type { NewStoryInput } from "./features/stories/storyTypes";
 
 function AuthGate() {
   const { token } = useAuth();
@@ -46,9 +46,14 @@ function StoryApp() {
   const { stories, isLoading, createStory } = useStories(apiClient);
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [draftTargetWordsByStoryId, setDraftTargetWordsByStoryId] = useState<Record<string, string[]>>({});
 
   const selectedStory = stories.find((s) => s.id === selectedStoryId) ?? null;
-  const chapterFlow = useChapterFlow(apiClient, selectedStoryId);
+  const chapterFlow = useChapterFlow(
+    apiClient,
+    selectedStoryId,
+    selectedStoryId ? draftTargetWordsByStoryId[selectedStoryId] ?? [] : [],
+  );
   const generationTask = useGenerationTask(apiClient, chapterFlow.generationTaskId);
   const { applyGenerationTask, loadCompletedChapter, output } = chapterFlow;
 
@@ -71,14 +76,17 @@ function StoryApp() {
         style: input.style,
         targetChapterCount: input.targetChapterCount,
       });
-      chapterFlow.setTargetWords(input.targetWords);
       await apiClient.submitChapterTargetWords(created.id, 1, {
         words: input.targetWords.map((word) => ({ word, source: "manual" })),
       });
+      setDraftTargetWordsByStoryId((current) => ({
+        ...current,
+        [created.id]: input.targetWords,
+      }));
       setDialogOpen(false);
       setSelectedStoryId(created.id);
     },
-    [chapterFlow, createStory],
+    [createStory],
   );
 
   const sidebar = (

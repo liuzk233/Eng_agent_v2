@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { ChapterOutput, GenerationTaskResponse } from "../../lib/api/types";
 import { ApiClient } from "../../lib/api/client";
 
@@ -11,7 +11,22 @@ export interface ChapterFlowState {
   generationTaskId: string | null;
 }
 
-export function useChapterFlow(apiClient: ApiClient, storyProjectId: string | null) {
+function createInitialState(targetWords: string[] = []): ChapterFlowState {
+  return {
+    targetWords,
+    isGenerating: false,
+    generationStatus: null,
+    output: null,
+    retryCount: 0,
+    generationTaskId: null,
+  };
+}
+
+export function useChapterFlow(
+  apiClient: ApiClient,
+  storyProjectId: string | null,
+  initialTargetWords: string[] = [],
+) {
   const [state, setState] = useState<ChapterFlowState>({
     targetWords: [],
     isGenerating: false,
@@ -20,6 +35,36 @@ export function useChapterFlow(apiClient: ApiClient, storyProjectId: string | nu
     retryCount: 0,
     generationTaskId: null,
   });
+
+  useEffect(() => {
+    let ignore = false;
+    setState(createInitialState([...initialTargetWords]));
+
+    if (!storyProjectId) {
+      return () => {
+        ignore = true;
+      };
+    }
+
+    apiClient.getChapter(storyProjectId, 1)
+      .then((chapter) => {
+        if (ignore) return;
+        setState((s) => ({
+          ...s,
+          targetWords: chapter.output.highlightedTargetWords,
+          generationStatus: chapter.status,
+          output: chapter.output,
+          isGenerating: false,
+        }));
+      })
+      .catch(() => {
+        // A draft story has no completed chapter yet; keep the seeded words/input state.
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [apiClient, storyProjectId]);
 
   const setTargetWords = useCallback((words: string[]) => {
     setState((s) => ({ ...s, targetWords: words }));
@@ -39,7 +84,7 @@ export function useChapterFlow(apiClient: ApiClient, storyProjectId: string | nu
 
   const startGeneration = useCallback(async () => {
     if (!storyProjectId) return;
-    setState((s) => ({ ...s, isGenerating: true, generationStatus: "running" }));
+    setState((s) => ({ ...s, output: null, isGenerating: true, generationStatus: "running" }));
     try {
       const result = await apiClient.generateChapter(storyProjectId, 1);
       setState((s) => ({
