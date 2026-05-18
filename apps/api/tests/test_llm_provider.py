@@ -219,6 +219,33 @@ class TestPrompts:
         assert len(CHAPTER_GENERATION_SYSTEM_PROMPT) > 0
         assert "JSON" in CHAPTER_GENERATION_SYSTEM_PROMPT
 
+    def test_build_chapter_user_prompt_includes_chapter_outline(self):
+        outline = [
+            "Chapter 1: Lily discovers a hidden library beneath the school.",
+            "Chapter 2: The library reveals a portal to another world.",
+            "Chapter 3: Lily must choose between two worlds.",
+        ]
+        prompt = build_chapter_user_prompt(
+            target_words=["adventure"],
+            style=StoryStyle.science_fiction,
+            chapter_number=2,
+            target_chapter_count=3,
+            chapter_outline=outline,
+        )
+        assert "初始章节大纲" in prompt
+        assert "Lily discovers a hidden library" in prompt
+        assert "portal to another world" in prompt
+
+    def test_build_chapter_user_prompt_omits_outline_when_none(self):
+        prompt = build_chapter_user_prompt(
+            target_words=["adventure"],
+            style=StoryStyle.science_fiction,
+            chapter_number=2,
+            target_chapter_count=3,
+            chapter_outline=None,
+        )
+        assert "初始章节大纲" not in prompt
+
 
 class TestChapterGenerationInput:
     def test_default_values(self):

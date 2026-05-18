@@ -1,6 +1,7 @@
 import type {
   ChapterContentResponse,
   ChapterGenerationResultResponse,
+  ChapterListItem,
   CreateStoryProjectRequest,
   LoginRequest,
   RegisterRequest,
@@ -160,6 +161,10 @@ export class ApiClient {
 
   listStoryProjects(): Promise<StoryProjectResponse[]> {
     return this.request<StoryProjectResponse[]>("/story-projects");
+  }
+
+  listChapters(storyProjectId: string): Promise<ChapterListItem[]> {
+    return this.request<ChapterListItem[]>(`/story-projects/${storyProjectId}/chapters`);
   }
 
   getStoryProject(storyProjectId: string): Promise<StoryProjectResponse> {

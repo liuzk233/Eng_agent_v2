@@ -57,6 +57,7 @@ def build_chapter_user_prompt(
     target_chapter_count: int,
     story_bible_summary: str = "",
     previous_chapter_summary: str = "",
+    chapter_outline: list[str] | None = None,
 ) -> str:
     parts = [
         f"风格：{STYLE_NAMES.get(style, style.value)}",
@@ -65,6 +66,9 @@ def build_chapter_user_prompt(
     ]
     if story_bible_summary:
         parts.append(f"故事设定：{story_bible_summary}")
+    if chapter_outline:
+        outline_text = "\n".join(f"  - {item}" for item in chapter_outline)
+        parts.append(f"初始章节大纲：\n{outline_text}")
     if previous_chapter_summary:
         parts.append(f"上一章摘要：{previous_chapter_summary}")
     if chapter_number == 1:

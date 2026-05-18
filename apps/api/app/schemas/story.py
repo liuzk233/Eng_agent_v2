@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, root_validator, validator
 
-from app.domain.enums import StoryStyle
+from app.domain.enums import GenerationStatus, StoryStyle
 
 
 class CreateStoryProjectRequest(BaseModel):
@@ -69,3 +69,35 @@ class ChapterContentResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class ChapterTargetWordResponse(BaseModel):
+    word: str
+    lemma: str
+    source: str
+    position: int
+
+
+class ChapterLatestGenerationTaskResponse(BaseModel):
+    id: UUID
+    chapter_id: UUID
+    status: GenerationStatus
+    retry_count: int = Field(ge=0, le=4)
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    fallback_reason: str | None = None
+
+    class Config:
+        orm_mode = True
+
+
+class ChapterListItemResponse(BaseModel):
+    id: UUID
+    story_project_id: UUID
+    chapter_number: int
+    status: str
+    target_words: list[ChapterTargetWordResponse]
+    has_output: bool
+    latest_generation_task: ChapterLatestGenerationTaskResponse | None = None

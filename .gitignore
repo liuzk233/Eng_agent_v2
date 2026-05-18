@@ -56,4 +56,12 @@ apps/web/*preview*.png
 *.sqlite3
 *.db
 STATE.md
-.specs
+
+# Flow-kit specs: keep current change work products visible without surfacing archives.
+/.specs/*
+!/.specs/*/
+!/.specs/*/*.md
+/.specs/archive/
+/.specs/adr/
+
+flow-kit

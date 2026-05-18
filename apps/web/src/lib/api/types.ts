@@ -111,3 +111,32 @@ export interface ChapterGenerationResultResponse {
   output: ChapterOutput;
   qualityReport: QualityReportResponse;
 }
+
+export interface ChapterTargetWordResponse {
+  word: string;
+  lemma: string;
+  source: string;
+  position: number;
+}
+
+export interface ChapterLatestGenerationTaskResponse {
+  id: string;
+  chapterId: string;
+  status: GenerationStatus;
+  retryCount: number;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  fallbackReason?: string | null;
+}
+
+export interface ChapterListItem {
+  id: string;
+  storyProjectId: string;
+  chapterNumber: number;
+  status: string;
+  targetWords: ChapterTargetWordResponse[];
+  hasOutput: boolean;
+  latestGenerationTask?: ChapterLatestGenerationTaskResponse | null;
+}

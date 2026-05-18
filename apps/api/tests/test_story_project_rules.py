@@ -10,7 +10,9 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import create_app
 from app.models.auth import InviteCode
+from app.models.generation import GenerationTask
 from app.models.story import Chapter, StoryBible, StoryProject
+from app.models.vocabulary import ChapterTargetWord
 
 
 def make_client() -> tuple[TestClient, sessionmaker]:
@@ -27,6 +29,8 @@ def make_client() -> tuple[TestClient, sessionmaker]:
             StoryProject.__table__,
             Chapter.__table__,
             StoryBible.__table__,
+            GenerationTask.__table__,
+            ChapterTargetWord.__table__,
         ],
     )
     testing_session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
@@ -95,6 +99,9 @@ def test_create_story_project_creates_initial_chapters_and_lists_for_owner() -> 
     assert [chapter.chapter_number for chapter in chapters] == [1, 2, 3]
     assert all(chapter.status == "draft" for chapter in chapters)
     assert bible.story_project_id.hex == created["id"].replace("-", "")
+    assert "3 chapter(s)" in bible.main_plot
+    assert len(bible.immutable_facts["chapter_outline"]) == 3
+    assert "Chapter 3" in bible.immutable_facts["chapter_outline"][-1]
 
 
 def test_exam_reading_is_forced_to_single_chapter() -> None:
@@ -130,6 +137,28 @@ def test_story_project_detail_is_scoped_to_current_user() -> None:
     assert own_detail.status_code == 200
     assert own_detail.json()["title"] == "Private arc"
     assert other_detail.status_code == 404
+
+
+def test_chapter_listing_returns_all_chapter_statuses_for_owner() -> None:
+    client, testing_session = make_client()
+    token = register_user(client, testing_session, "chapter-list@example.com", "CHAPTER-LIST")
+    created = client.post(
+        "/api/story-projects",
+        headers=auth_headers(token),
+        json={"title": "Directory arc", "style": "science_fiction", "target_chapter_count": 3},
+    ).json()
+
+    response = client.get(
+        f"/api/story-projects/{created['id']}/chapters",
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 200
+    chapters = response.json()
+    assert [chapter["chapter_number"] for chapter in chapters] == [1, 2, 3]
+    assert [chapter["status"] for chapter in chapters] == ["draft", "draft", "draft"]
+    assert all(chapter["has_output"] is False for chapter in chapters)
+    assert all(chapter["latest_generation_task"] is None for chapter in chapters)
 
 
 def test_story_project_listing_supports_limit_and_offset() -> None:

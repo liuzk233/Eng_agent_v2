@@ -356,6 +356,71 @@ select:disabled {
   padding: var(--space-md);
 }
 
+.chapter-progress {
+  align-self: flex-start;
+}
+
+.chapter-next-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.chapter-next-button {
+  width: auto;
+  min-width: 148px;
+  padding-inline: 18px;
+}
+
+.chapter-navigator {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  align-self: flex-start;
+}
+
+.chapter-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+  min-width: 80px;
+}
+
+.chapter-nav-item:hover {
+  border-color: var(--color-brand);
+}
+
+.chapter-nav-item--active {
+  border-color: var(--color-brand);
+  background: color-mix(in oklch, var(--color-brand-veil) 40%, var(--color-surface));
+}
+
+.chapter-nav-item--completed {
+  border-color: oklch(0.62 0.12 155);
+}
+
+.chapter-nav-item--generating {
+  border-color: var(--color-warning);
+}
+
+.chapter-nav-number {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+}
+
+.chapter-nav-status {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
 .setup-card {
   background: color-mix(in oklch, var(--color-brand-veil) 72%, var(--color-surface));
 }

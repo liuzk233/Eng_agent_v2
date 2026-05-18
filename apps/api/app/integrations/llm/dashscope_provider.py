@@ -105,6 +105,7 @@ class DashScopeProvider(LLMProvider):
             story_bible_summary = "; ".join(parts)
 
         previous_summary = input_data.chapter_state_summary
+        chapter_outline = input_data.story_bible_immutable_facts.get("chapter_outline") if input_data.story_bible_immutable_facts else None
 
         return build_chapter_user_prompt(
             target_words=input_data.target_words,
@@ -113,6 +114,7 @@ class DashScopeProvider(LLMProvider):
             target_chapter_count=input_data.target_chapter_count,
             story_bible_summary=story_bible_summary,
             previous_chapter_summary=previous_summary or "",
+            chapter_outline=chapter_outline,
         )
 
     def _parse_output(

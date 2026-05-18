@@ -49,6 +49,23 @@ class GenerationRepository:
             )
         )
 
+    def list_chapters_for_user(
+        self,
+        user: User,
+        story_project_id: UUID,
+    ) -> list[Chapter]:
+        return list(
+            self.session.scalars(
+                select(Chapter)
+                .join(StoryProject)
+                .where(
+                    StoryProject.id == story_project_id,
+                    StoryProject.user_id == user.id,
+                )
+                .order_by(Chapter.chapter_number)
+            )
+        )
+
     def create_generation_task(self, chapter: Chapter) -> GenerationTask:
         task = GenerationTask(chapter_id=chapter.id, status=GenerationStatus.queued)
         chapter.status = GenerationStatus.queued
@@ -119,10 +136,24 @@ class GenerationRepository:
 
         chapter = task.chapter
         chapter.status = state.final_status
+        if state.final_status in (GenerationStatus.completed, GenerationStatus.fallback_completed):
+            project = chapter.story_project
+            project.current_chapter_number = min(
+                chapter.chapter_number + 1,
+                project.target_chapter_count,
+            )
         if state.draft_output is not None:
             chapter.english_content = state.draft_output.english_content
             chapter.chinese_translation = state.draft_output.chinese_translation
             chapter.word_count = state.quality_result.word_count if state.quality_result else None
+
+            existing_state = self.session.scalar(
+                select(ChapterState).where(ChapterState.chapter_id == chapter.id)
+            )
+            if existing_state is None:
+                existing_state = ChapterState(chapter_id=chapter.id)
+                self.session.add(existing_state)
+            existing_state.summary = state.draft_output.english_content[:200]
 
         if state.quality_result is not None:
             self.session.add(

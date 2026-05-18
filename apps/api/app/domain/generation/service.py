@@ -75,6 +75,18 @@ class GenerationService:
             return None
         return chapter
 
+    def list_chapters(
+        self,
+        user: User,
+        story_project_id: UUID,
+    ) -> list[Chapter] | None:
+        if self.repository is None:
+            raise RuntimeError("GenerationRepository is required to list chapters")
+        chapters = self.repository.list_chapters_for_user(user, story_project_id)
+        if not chapters:
+            return None
+        return chapters
+
     def get_chapter_generation_result(
         self,
         user: User,

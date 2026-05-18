@@ -7,6 +7,13 @@ from app.models.auth import User
 from app.models.story import Chapter, StoryBible, StoryProject
 
 
+STYLE_TONES = {
+    "web_novel": "Fast progression, visible power shifts, and a hook at each chapter ending.",
+    "science_fiction": "Speculative discovery, concrete stakes, and continuity across each chapter.",
+    "exam_reading": "Clear informational structure for focused reading practice.",
+}
+
+
 class StoryProjectRepository:
     def __init__(self, session: Session):
         self.session = session
@@ -18,6 +25,7 @@ class StoryProjectRepository:
         style: str,
         target_chapter_count: int,
     ) -> StoryProject:
+        chapter_outline = _build_initial_chapter_outline(target_chapter_count)
         project = StoryProject(
             user_id=user.id,
             title=title,
@@ -32,7 +40,9 @@ class StoryProjectRepository:
             StoryBible(
                 story_project_id=project.id,
                 characters={},
-                immutable_facts={},
+                main_plot=_build_initial_main_plot(title, style, target_chapter_count, chapter_outline),
+                tone=STYLE_TONES.get(style),
+                immutable_facts={"chapter_outline": chapter_outline},
             )
         )
         for chapter_number in range(1, target_chapter_count + 1):
@@ -64,3 +74,31 @@ class StoryProjectRepository:
                 StoryProject.user_id == user.id,
             )
         )
+
+
+def _build_initial_main_plot(
+    title: str,
+    style: str,
+    target_chapter_count: int,
+    outline: list[str],
+) -> str:
+    return (
+        f"Initial outline for '{title}' ({style}, {target_chapter_count} chapter(s)): "
+        + " ".join(outline)
+    )
+
+
+def _build_initial_chapter_outline(target_chapter_count: int) -> list[str]:
+    if target_chapter_count <= 1:
+        return ["Chapter 1 establishes the premise, develops the target words, and closes the short arc."]
+
+    outline: list[str] = []
+    for chapter_number in range(1, target_chapter_count + 1):
+        if chapter_number == 1:
+            purpose = "opens the premise, introduces the pressure, and ends with a forward hook"
+        elif chapter_number == target_chapter_count:
+            purpose = "resolves the central tension while preserving vocabulary clarity"
+        else:
+            purpose = "escalates the conflict and carries unresolved details into the next chapter"
+        outline.append(f"Chapter {chapter_number} {purpose}.")
+    return outline

@@ -15,6 +15,7 @@ import { UserWordsCard } from "./features/conversation/cards/UserWordsCard";
 import { ChapterCard } from "./features/conversation/cards/ChapterCard";
 import { ReviewCard } from "./features/conversation/cards/ReviewCard";
 import { TargetWordsInputDock } from "./features/conversation/TargetWordsInputDock";
+import { ChapterNavigator } from "./features/conversation/ChapterNavigator";
 import { GenerationStatusIndicator } from "./features/generation/GenerationStatusIndicator";
 import { useGenerationTask } from "./features/generation/useGenerationTask";
 import { apiClient } from "./lib/api/client";
@@ -53,6 +54,7 @@ function StoryApp() {
     apiClient,
     selectedStoryId,
     selectedStoryId ? draftTargetWordsByStoryId[selectedStoryId] ?? [] : [],
+    selectedStory?.currentChapterNumber ?? 1,
   );
   const generationTask = useGenerationTask(apiClient, chapterFlow.generationTaskId);
   const { applyGenerationTask, loadCompletedChapter, output } = chapterFlow;
@@ -114,6 +116,16 @@ function StoryApp() {
         style={selectedStory.style}
         targetChapterCount={selectedStory.targetChapterCount}
       />
+      {chapterFlow.chapters.length > 0 && (
+        <ChapterNavigator
+          chapters={chapterFlow.chapters}
+          currentChapterNumber={chapterFlow.chapterNumber}
+          onSelectChapter={chapterFlow.selectChapter}
+        />
+      )}
+      <div className="chapter-progress text-supporting">
+        第 {chapterFlow.chapterNumber} 章 / 共 {selectedStory.targetChapterCount} 章
+      </div>
 
       {chapterFlow.targetWords.length > 0 && (
         <UserWordsCard words={chapterFlow.targetWords} />
@@ -139,6 +151,17 @@ function StoryApp() {
               retryCount={chapterFlow.retryCount}
               status="fallback_completed"
             />
+          )}
+          {chapterFlow.chapterNumber < selectedStory.targetChapterCount && (
+            <div className="chapter-next-actions">
+              <button
+                type="button"
+                className="auth-submit chapter-next-button"
+                onClick={chapterFlow.startNextChapter}
+              >
+                生成下一章
+              </button>
+            </div>
           )}
         </>
       )}

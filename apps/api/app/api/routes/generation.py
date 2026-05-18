@@ -16,6 +16,11 @@ from app.schemas.generation import (
     QualityReportResponse,
 )
 from app.schemas.story import ChapterContentResponse, ChapterOutput
+from app.schemas.story import (
+    ChapterLatestGenerationTaskResponse,
+    ChapterListItemResponse,
+    ChapterTargetWordResponse,
+)
 
 router = APIRouter(tags=["generation"])
 
@@ -51,6 +56,21 @@ def get_generation_task(
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generation task not found")
     return task
+
+
+@router.get("/api/story-projects/{story_project_id}/chapters", response_model=list[ChapterListItemResponse])
+def list_chapters(
+    story_project_id: UUID,
+    current_user: User = Depends(get_current_user),
+    generation_service: GenerationService = Depends(get_generation_service),
+) -> list[ChapterListItemResponse]:
+    chapters = generation_service.list_chapters(current_user, story_project_id)
+    if chapters is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Story project not found")
+    return [
+        serialize_chapter_list_item(chapter, generation_service.repository.get_latest_generation_task(chapter.id))
+        for chapter in chapters
+    ]
 
 
 @router.get(
@@ -122,6 +142,43 @@ def serialize_chapter_content(chapter: Chapter) -> ChapterContentResponse:
             english_content=chapter.english_content or "",
             highlighted_target_words=highlighted_words,
             chinese_translation=chapter.chinese_translation or "",
+        ),
+    )
+
+
+def serialize_chapter_list_item(
+    chapter: Chapter,
+    latest_task: GenerationTask | None,
+) -> ChapterListItemResponse:
+    return ChapterListItemResponse(
+        id=chapter.id,
+        story_project_id=chapter.story_project_id,
+        chapter_number=chapter.chapter_number,
+        status=chapter.status,
+        target_words=[
+            ChapterTargetWordResponse(
+                word=word.word,
+                lemma=word.lemma,
+                source=word.source,
+                position=word.position,
+            )
+            for word in sorted(chapter.target_words, key=lambda item: item.position)
+        ],
+        has_output=bool(chapter.english_content and chapter.chinese_translation),
+        latest_generation_task=(
+            ChapterLatestGenerationTaskResponse(
+                id=latest_task.id,
+                chapter_id=latest_task.chapter_id,
+                status=latest_task.status,
+                retry_count=latest_task.retry_count,
+                created_at=latest_task.created_at,
+                updated_at=latest_task.updated_at,
+                started_at=latest_task.started_at,
+                completed_at=latest_task.completed_at,
+                fallback_reason=latest_task.fallback_reason,
+            )
+            if latest_task
+            else None
         ),
     )
 

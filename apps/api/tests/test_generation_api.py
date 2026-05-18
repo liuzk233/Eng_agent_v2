@@ -18,7 +18,7 @@ from app.integrations.llm.base import ChapterGenerationOutput
 from app.main import create_app
 from app.models.auth import InviteCode
 from app.models.generation import GenerationTask, QualityReport
-from app.models.story import Chapter, StoryProject
+from app.models.story import Chapter, ChapterState, StoryProject
 from app.models.vocabulary import ChapterTargetWord, ExamSyllabus, SyllabusWord
 
 
@@ -191,6 +191,33 @@ def test_generation_task_is_scoped_to_story_owner(monkeypatch) -> None:
     assert other_response.status_code == 404
 
 
+def test_chapter_listing_exposes_latest_generation_task_for_resume(monkeypatch) -> None:
+    client, testing_session = make_client()
+    token = register_user(client, testing_session, "resume-generation@example.com", "RESUME-GEN")
+    story = create_story(client, token)
+    submit_words(client, token, story["id"])
+    monkeypatch.setattr(GenerationService, "enqueue", lambda self, state: "celery-task-id")
+
+    created = client.post(
+        f"/api/story-projects/{story['id']}/chapters/1/generate",
+        headers=auth_headers(token),
+    ).json()
+
+    response = client.get(
+        f"/api/story-projects/{story['id']}/chapters",
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 200
+    first_chapter = response.json()[0]
+    assert first_chapter["status"] == "queued"
+    assert first_chapter["target_words"] == [
+        {"word": "Adventure", "lemma": "adventure", "source": "manual", "position": 1}
+    ]
+    assert first_chapter["latest_generation_task"]["id"] == created["id"]
+    assert first_chapter["latest_generation_task"]["status"] == "queued"
+
+
 def test_completed_generation_persists_chapter_output_for_api_read(monkeypatch) -> None:
     client, testing_session = make_client()
     token = register_user(client, testing_session, "chapter-output@example.com", "OUTPUT")
@@ -251,6 +278,52 @@ def test_completed_generation_persists_chapter_output_for_api_read(monkeypatch) 
 
     with testing_session() as session:
         report = session.scalar(select(QualityReport))
+        project = session.get(StoryProject, UUID(story["id"]))
 
     assert report is not None
     assert report.target_word_hits == {"adventure": 1}
+    assert project.current_chapter_number == 2
+
+
+def test_completed_generation_writes_chapter_state_summary(monkeypatch) -> None:
+    client, testing_session = make_client()
+    token = register_user(client, testing_session, "continuity@example.com", "CONTINUITY")
+    story = create_story(client, token)
+    submit_words(client, token, story["id"])
+    monkeypatch.setattr(GenerationService, "enqueue", lambda self, state: "celery-task-id")
+
+    task_body = client.post(
+        f"/api/story-projects/{story['id']}/chapters/1/generate",
+        headers=auth_headers(token),
+    ).json()
+
+    english_text = "The **adventure** began when the student found a strange map in the old library."
+    with testing_session() as session:
+        task = session.get(GenerationTask, UUID(task_body["id"]))
+        state = GenerationState(
+            generation_task_id=str(task.id),
+            project_id=story["id"],
+            chapter_id=str(task.chapter_id),
+            final_status=GenerationStatus.completed,
+            retry_count=0,
+            draft_output=ChapterGenerationOutput(
+                english_content=english_text,
+                highlighted_target_words=["adventure"],
+                chinese_translation="冒险开始了。",
+            ),
+            quality_result=QualityReviewResult(word_count=300, passed=True),
+        )
+        repository = GenerationRepository(session)
+        repository.complete_generation_task(state)
+        session.commit()
+
+    with testing_session() as session:
+        chapter = session.scalar(
+            select(Chapter).where(Chapter.chapter_number == 1, Chapter.story_project_id == UUID(story["id"]))
+        )
+        chapter_state = session.scalar(
+            select(ChapterState).where(ChapterState.chapter_id == chapter.id)
+        )
+
+    assert chapter_state is not None
+    assert chapter_state.summary == english_text[:200]
