@@ -32,6 +32,29 @@ function loadChaptersForStory(
   return apiClient.listChapters(storyProjectId).catch(() => []);
 }
 
+function isPollingStatus(status: string): boolean {
+  return ["queued", "running", "reviewing", "retrying"].includes(status);
+}
+
+function findChapter(chapters: ChapterListItem[], chapterNumber: number): ChapterListItem | undefined {
+  return chapters.find((chapter) => chapter.chapterNumber === chapterNumber);
+}
+
+function targetWordsFromChapter(chapter: ChapterListItem | undefined): string[] {
+  return chapter?.targetWords.map((word) => word.word) ?? [];
+}
+
+function restoreTaskState(chapter: ChapterListItem | undefined): Partial<ChapterFlowState> {
+  const task = chapter?.latestGenerationTask;
+  if (!task || !isPollingStatus(task.status)) return {};
+  return {
+    generationTaskId: task.id,
+    generationStatus: task.status,
+    retryCount: task.retryCount,
+    isGenerating: true,
+  };
+}
+
 export function useChapterFlow(
   apiClient: ApiClient,
   storyProjectId: string | null,
@@ -53,11 +76,28 @@ export function useChapterFlow(
       };
     }
 
-    Promise.all([
-      apiClient.getChapter(storyProjectId, initialChapterNumber).catch(() => null),
-      loadChaptersForStory(apiClient, storyProjectId),
-    ]).then(([chapter, chapters]) => {
+    loadChaptersForStory(apiClient, storyProjectId).then(async (chapters) => {
       if (ignore) return;
+      const initialListedChapter = findChapter(chapters, initialChapterNumber);
+      const initialRestoredTaskState = restoreTaskState(initialListedChapter);
+
+      if (initialRestoredTaskState.generationTaskId) {
+        setState((s) => ({
+          ...s,
+          chapters,
+          chapterNumber: initialChapterNumber,
+          targetWords: targetWordsFromChapter(initialListedChapter).length > 0
+            ? targetWordsFromChapter(initialListedChapter)
+            : s.targetWords,
+          output: null,
+          ...initialRestoredTaskState,
+        }));
+        return;
+      }
+
+      const chapter = await apiClient.getChapter(storyProjectId, initialChapterNumber).catch(() => null);
+      if (ignore) return;
+      const listedChapter = findChapter(chapters, chapter?.chapterNumber ?? initialChapterNumber);
       setState((s) => ({
         ...s,
         chapters,
@@ -68,8 +108,15 @@ export function useChapterFlow(
               generationStatus: chapter.status,
               output: chapter.output,
               isGenerating: false,
+              generationTaskId: null,
+              retryCount: 0,
             }
-          : {}),
+          : {
+              chapterNumber: initialChapterNumber,
+              targetWords: targetWordsFromChapter(listedChapter).length > 0
+                ? targetWordsFromChapter(listedChapter)
+                : s.targetWords,
+            }),
       }));
     });
 
@@ -115,9 +162,10 @@ export function useChapterFlow(
     if (!task) return;
     setState((s) => ({
       ...s,
+      generationTaskId: task.id,
       generationStatus: task.status,
       retryCount: task.retryCount,
-      isGenerating: ["queued", "running", "reviewing", "retrying"].includes(task.status),
+      isGenerating: isPollingStatus(task.status),
     }));
   }, []);
 
@@ -143,11 +191,20 @@ export function useChapterFlow(
 
   const selectChapter = useCallback(async (chapterNumber: number) => {
     if (!storyProjectId) return;
+    if (chapterNumber === state.chapterNumber && (state.output || state.generationTaskId)) {
+      return;
+    }
+    const selectedChapter = findChapter(state.chapters, chapterNumber);
+    const selectedTargetWords = targetWordsFromChapter(selectedChapter);
+    const restoredTaskState = restoreTaskState(selectedChapter);
     setState((s) => ({
       ...s,
-      ...createChapterState(chapterNumber, []),
+      ...createChapterState(chapterNumber, selectedTargetWords),
       generationStatus: null,
+      ...restoredTaskState,
     }));
+    if (restoredTaskState.generationTaskId) return;
+
     try {
       const chapter = await apiClient.getChapter(storyProjectId, chapterNumber);
       setState((s) => ({
@@ -157,11 +214,13 @@ export function useChapterFlow(
         generationStatus: chapter.status,
         output: chapter.output,
         isGenerating: false,
+        generationTaskId: null,
+        retryCount: 0,
       }));
     } catch {
-      // draft chapter — keep empty state
+      // Draft or in-progress chapters can return 404 before output exists.
     }
-  }, [apiClient, storyProjectId]);
+  }, [apiClient, storyProjectId, state.chapters]);
 
   return {
     ...state,

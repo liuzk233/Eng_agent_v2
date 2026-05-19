@@ -4,7 +4,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { useChapterFlow } from "../useChapterFlow";
-import type { ChapterContentResponse, ChapterListItem } from "../../../lib/api/types";
+import type { ChapterContentResponse, ChapterLatestGenerationTaskResponse, ChapterListItem } from "../../../lib/api/types";
 import type { ApiClient } from "../../../lib/api/client";
 
 function chapterResponse(
@@ -30,6 +30,7 @@ function chapterListItem(
   storyProjectId: string,
   chapterNumber: number,
   status: string,
+  latestGenerationTask: ChapterLatestGenerationTaskResponse | null = null,
 ): ChapterListItem {
   return {
     id: `${storyProjectId}-chapter-${chapterNumber}`,
@@ -38,7 +39,21 @@ function chapterListItem(
     status,
     targetWords: [],
     hasOutput: status === "completed",
-    latestGenerationTask: null,
+    latestGenerationTask,
+  };
+}
+
+function generationTask(
+  chapterId: string,
+  status: ChapterLatestGenerationTaskResponse["status"] = "running",
+): ChapterLatestGenerationTaskResponse {
+  return {
+    id: `${chapterId}-task`,
+    chapterId,
+    status,
+    retryCount: 1,
+    createdAt: "2026-05-18T00:00:00Z",
+    updatedAt: "2026-05-18T00:01:00Z",
   };
 }
 
@@ -152,5 +167,157 @@ describe("useChapterFlow", () => {
     expect(result.current.chapterNumber).toBe(2);
     expect(result.current.output?.englishContent).toBe("Chapter two **beta**.");
     expect(getChapter).toHaveBeenCalledWith("story-nav", 2);
+  });
+
+  it("restores a running generation task from the chapter list when entering a story", async () => {
+    const runningTask = generationTask("story-running-chapter-2");
+    const chapters = [
+      chapterListItem("story-running", 1, "completed"),
+      chapterListItem("story-running", 2, "running", runningTask),
+    ];
+    const getChapter = vi.fn().mockRejectedValue(new Error("not found"));
+    const listChapters = vi.fn().mockResolvedValue(chapters);
+    const generateChapter = vi.fn();
+    const client = { getChapter, listChapters, generateChapter } as unknown as ApiClient;
+
+    const { result } = renderHook(() =>
+      useChapterFlow(client, "story-running", [], 2),
+    );
+
+    await waitFor(() => {
+      expect(result.current.generationTaskId).toBe(runningTask.id);
+    });
+
+    expect(result.current.isGenerating).toBe(true);
+    expect(result.current.generationStatus).toBe("running");
+    expect(result.current.retryCount).toBe(1);
+    expect(getChapter).not.toHaveBeenCalled();
+    expect(generateChapter).not.toHaveBeenCalled();
+  });
+
+  it("restores an existing running task when selecting a generating chapter", async () => {
+    const runningTask = generationTask("story-select-chapter-2");
+    const chapters = [
+      chapterListItem("story-select", 1, "completed"),
+      chapterListItem("story-select", 2, "running", runningTask),
+    ];
+    const getChapter = vi.fn()
+      .mockResolvedValueOnce(chapterResponse("story-select", "Chapter one **word**.", ["word"], 1));
+    const listChapters = vi.fn().mockResolvedValue(chapters);
+    const generateChapter = vi.fn();
+    const client = { getChapter, listChapters, generateChapter } as unknown as ApiClient;
+
+    const { result } = renderHook(() => useChapterFlow(client, "story-select"));
+
+    await waitFor(() => {
+      expect(result.current.chapters).toHaveLength(2);
+    });
+
+    await act(async () => {
+      await result.current.selectChapter(2);
+    });
+
+    expect(result.current.chapterNumber).toBe(2);
+    expect(result.current.output).toBeNull();
+    expect(result.current.isGenerating).toBe(true);
+    expect(result.current.generationTaskId).toBe(runningTask.id);
+    expect(getChapter).not.toHaveBeenCalledWith("story-select", 2);
+    expect(generateChapter).not.toHaveBeenCalled();
+  });
+
+  it("loads a completed chapter after a restored running task finishes", async () => {
+    const runningTask = generationTask("story-finish-chapter-2");
+    const chapters = [
+      chapterListItem("story-finish", 1, "completed"),
+      chapterListItem("story-finish", 2, "running", runningTask),
+    ];
+    const completedChapters = [
+      chapterListItem("story-finish", 1, "completed"),
+      chapterListItem("story-finish", 2, "completed"),
+    ];
+    const getChapter = vi.fn()
+      .mockResolvedValueOnce(chapterResponse("story-finish", "Chapter two **beta**.", ["beta"], 2));
+    const listChapters = vi.fn()
+      .mockResolvedValueOnce(chapters)
+      .mockResolvedValueOnce(completedChapters);
+    const client = { getChapter, listChapters } as unknown as ApiClient;
+
+    const { result } = renderHook(() =>
+      useChapterFlow(client, "story-finish", [], 2),
+    );
+
+    await waitFor(() => {
+      expect(result.current.generationTaskId).toBe(runningTask.id);
+    });
+
+    await act(async () => {
+      await result.current.loadCompletedChapter();
+    });
+
+    expect(getChapter).toHaveBeenCalledWith("story-finish", 2);
+    expect(result.current.output?.englishContent).toBe("Chapter two **beta**.");
+    expect(result.current.isGenerating).toBe(false);
+  });
+
+  it("does not reset output when clicking the already-active completed chapter", async () => {
+    const chapters = [
+      chapterListItem("story-click-same", 1, "completed"),
+      chapterListItem("story-click-same", 2, "draft"),
+    ];
+    const getChapter = vi.fn()
+      .mockResolvedValueOnce(chapterResponse("story-click-same", "Chapter one **word**.", ["word"], 1))
+      .mockResolvedValueOnce(chapterResponse("story-click-same", "Chapter two **beta**.", ["beta"], 2));
+    const listChapters = vi.fn().mockResolvedValue(chapters);
+    const client = { getChapter, listChapters } as unknown as ApiClient;
+
+    const { result } = renderHook(() => useChapterFlow(client, "story-click-same"));
+
+    await waitFor(() => {
+      expect(result.current.output?.englishContent).toBe("Chapter one **word**.");
+    });
+
+    getChapter.mockClear();
+
+    await act(async () => {
+      await result.current.selectChapter(1);
+    });
+
+    expect(result.current.output?.englishContent).toBe("Chapter one **word**.");
+    expect(getChapter).not.toHaveBeenCalled();
+  });
+
+  it("does not reset generationTaskId when clicking the already-active generating chapter", async () => {
+    const runningTask = generationTask("story-click-gen-chapter-2");
+    const chapters = [
+      chapterListItem("story-click-gen", 1, "completed"),
+      chapterListItem("story-click-gen", 2, "running", runningTask),
+    ];
+    const getChapter = vi.fn()
+      .mockResolvedValueOnce(chapterResponse("story-click-gen", "Chapter one **word**.", ["word"], 1));
+    const listChapters = vi.fn().mockResolvedValue(chapters);
+    const client = { getChapter, listChapters } as unknown as ApiClient;
+
+    const { result } = renderHook(() => useChapterFlow(client, "story-click-gen"));
+
+    await waitFor(() => {
+      expect(result.current.chapters).toHaveLength(2);
+    });
+
+    await act(async () => {
+      await result.current.selectChapter(2);
+    });
+
+    expect(result.current.generationTaskId).toBe(runningTask.id);
+    expect(result.current.isGenerating).toBe(true);
+
+    getChapter.mockClear();
+
+    await act(async () => {
+      await result.current.selectChapter(2);
+    });
+
+    expect(result.current.generationTaskId).toBe(runningTask.id);
+    expect(result.current.isGenerating).toBe(true);
+    expect(getChapter).not.toHaveBeenCalled();
   });
 });
