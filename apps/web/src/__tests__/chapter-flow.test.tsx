@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { App } from "../App";
 import { AuthProvider } from "../features/auth/AuthProvider";
 import { StorySidebar } from "../features/stories/StorySidebar";
 import { NewStoryDialog } from "../features/stories/NewStoryDialog";
@@ -11,8 +12,9 @@ import { GenerationStatusIndicator } from "../features/generation/GenerationStat
 import { ChapterCard } from "../features/conversation/cards/ChapterCard";
 import { ReviewCard } from "../features/conversation/cards/ReviewCard";
 import { ProtectedRoute } from "../features/auth/ProtectedRoute";
-import { useStories } from "../features/stories/useStories";
-import { ApiClient } from "../lib/api/client";
+import { ApiClient, apiClient } from "../lib/api/client";
+import { queryClient } from "../lib/query/queryClient";
+import type { ChapterListItem, StoryProjectResponse } from "../lib/api/types";
 
 function createMockClient(): ApiClient {
   return {
@@ -24,7 +26,53 @@ function createMockClient(): ApiClient {
   } as unknown as ApiClient;
 }
 
+const story: StoryProjectResponse = {
+  id: "story-1",
+  title: "Serial Story",
+  style: "web_novel",
+  targetChapterCount: 3,
+  currentChapterNumber: 1,
+  createdAt: "2026-05-20T00:00:00Z",
+  updatedAt: "2026-05-20T00:00:00Z",
+};
+
+function chapterListItem(chapterNumber: number, status = "completed"): ChapterListItem {
+  return {
+    id: `chapter-${chapterNumber}`,
+    storyProjectId: story.id,
+    chapterNumber,
+    status,
+    targetWords: [],
+    hasOutput: status === "completed",
+    latestGenerationTask: null,
+  };
+}
+
+function mockStoryApp(chapters: ChapterListItem[]) {
+  sessionStorage.setItem("vsl_token", "test-token");
+  vi.spyOn(apiClient, "listStoryProjects").mockResolvedValue([story]);
+  vi.spyOn(apiClient, "listChapters").mockResolvedValue(chapters);
+  vi.spyOn(apiClient, "getChapter").mockResolvedValue({
+    id: "chapter-1",
+    storyProjectId: story.id,
+    chapterNumber: 1,
+    status: "completed",
+    output: {
+      englishContent: "She showed great **courage**.",
+      highlightedTargetWords: ["courage"],
+      chineseTranslation: "她展现了勇气。",
+    },
+  });
+}
+
 describe("Chapter Flow Integration", () => {
+  afterEach(() => {
+    cleanup();
+    queryClient.clear();
+    sessionStorage.clear();
+    vi.restoreAllMocks();
+  });
+
   it("renders AppShell with sidebar and main content", () => {
     render(
       <AppShell
@@ -117,5 +165,40 @@ describe("Chapter Flow Integration", () => {
     );
     expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
     expect(screen.getByText("请先登录后继续")).toBeInTheDocument();
+  });
+
+  it("hides next chapter generation button when next chapter already exists", async () => {
+    mockStoryApp([chapterListItem(1), chapterListItem(2, "draft")]);
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /Serial Story/ }));
+    await screen.findByText("她展现了勇气。");
+
+    expect(screen.queryByRole("button", { name: "生成下一章" })).not.toBeInTheDocument();
+  });
+
+  it("shows next chapter generation button when no next chapter exists", async () => {
+    mockStoryApp([chapterListItem(1)]);
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /Serial Story/ }));
+    await screen.findByText("她展现了勇气。");
+
+    expect(screen.getByRole("button", { name: "生成下一章" })).toBeInTheDocument();
+  });
+
+  it("keeps existing next chapter entry behavior when button is shown", async () => {
+    mockStoryApp([chapterListItem(1)]);
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /Serial Story/ }));
+    await screen.findByText("她展现了勇气。");
+
+    fireEvent.click(screen.getByRole("button", { name: "生成下一章" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("第 2 章 / 共 3 章")).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("目标词")).toBeInTheDocument();
   });
 });

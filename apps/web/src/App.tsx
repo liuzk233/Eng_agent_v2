@@ -58,6 +58,9 @@ function StoryApp() {
   );
   const generationTask = useGenerationTask(apiClient, chapterFlow.generationTaskId);
   const { applyGenerationTask, loadCompletedChapter, output } = chapterFlow;
+  const hasNextChapterRecord = chapterFlow.chapters.some(
+    (chapter) => chapter.chapterNumber === chapterFlow.chapterNumber + 1,
+  );
 
   useEffect(() => {
     applyGenerationTask(generationTask.task);
@@ -154,7 +157,7 @@ function StoryApp() {
               status="fallback_completed"
             />
           )}
-          {chapterFlow.chapterNumber < selectedStory.targetChapterCount && (
+          {chapterFlow.chapterNumber < selectedStory.targetChapterCount && !hasNextChapterRecord && (
             <div className="chapter-next-actions">
               <button
                 type="button"
