@@ -36,7 +36,7 @@ def test_out_of_syllabus_rule_exempts_targets_forms_and_proper_nouns() -> None:
     assert report.passed is True
 
 
-def test_out_of_syllabus_rule_fails_when_rate_exceeds_one_percent() -> None:
+def test_out_of_syllabus_rule_collects_candidates_without_failing_when_rate_exceeds_one_percent() -> None:
     allowed_words = ["plain"] * 98
     content = " ".join([*allowed_words, "xenolith", "quasar"])
     context = QualityReviewContext(
@@ -49,7 +49,8 @@ def test_out_of_syllabus_rule_fails_when_rate_exceeds_one_percent() -> None:
 
     assert report.out_of_syllabus_rate == 0.02
     assert {word.word for word in report.out_of_syllabus_words} == {"xenolith", "quasar"}
-    assert report.passed is False
+    assert report.passed is True
+    assert "Out-of-syllabus candidate rate 2.00% exceeds 1.00%." in report.review_notes
 
 
 def test_length_rule_accepts_three_hundred_to_five_hundred_words() -> None:

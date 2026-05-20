@@ -39,10 +39,9 @@ class OutOfSyllabusRule:
         out_of_syllabus_count = sum(1 for token in reviewed_tokens if token.normalized in findings_by_word)
         result.out_of_syllabus_words = list(findings_by_word.values())
         result.out_of_syllabus_rate = out_of_syllabus_count / total_words if total_words else 0
-
         if result.out_of_syllabus_rate > self.max_rate:
-            result.fail(
-                f"Out-of-syllabus rate {result.out_of_syllabus_rate:.2%} exceeds {self.max_rate:.2%}."
+            result.add_note(
+                f"Out-of-syllabus candidate rate {result.out_of_syllabus_rate:.2%} exceeds {self.max_rate:.2%}."
             )
 
     def _allowed_words(self, context: QualityReviewContext) -> set[str]:
