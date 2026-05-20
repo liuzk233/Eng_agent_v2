@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     cors_origins: str = ""
     dashscope_api_key: str = ""
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    dashscope_model: str = "qwen3.5-122b-a10b"
+    dashscope_model: str = "deepseek-v4-flash"
 
     model_config = SettingsConfigDict(
         env_prefix="VSL_",

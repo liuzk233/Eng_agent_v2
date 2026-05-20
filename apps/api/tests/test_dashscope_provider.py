@@ -3,7 +3,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.core.config import Settings
 from app.domain.enums import StoryStyle
+from app.integrations.llm.prompts import CHAPTER_GENERATION_SYSTEM_PROMPT
 from app.integrations.llm.base import (
     ChapterGenerationInput,
     ChapterGenerationOutput,
@@ -156,7 +158,7 @@ class TestDashScopeProvider:
         provider = DashScopeProvider(
             api_key="sk-test-key",
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-            model="qwen3.5-122b-a10b",
+            model="deepseek-v4-flash",
         )
 
         mock_response = MagicMock()
@@ -174,12 +176,23 @@ class TestDashScopeProvider:
             call_args = mock_client.post.call_args
             assert call_args[0][0] == "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
             payload = call_args[1]["json"]
-            assert payload["model"] == "qwen3.5-122b-a10b"
+            assert payload["model"] == "deepseek-v4-flash"
             assert payload["messages"][0]["role"] == "system"
+            assert "中国大陆初中生可理解英语水平" in payload["messages"][0]["content"]
             assert payload["messages"][1]["role"] == "user"
             headers = call_args[1]["headers"]
             assert headers["Authorization"] == "Bearer sk-test-key"
 
+
+    def test_default_dashscope_model_changes_without_base_url_change(self):
+        assert Settings.model_fields["dashscope_model"].default == "deepseek-v4-flash"
+        assert (
+            Settings.model_fields["dashscope_base_url"].default
+            == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
+
+    def test_chapter_system_prompt_contains_junior_level_soft_constraint(self):
+        assert "中国大陆初中生可理解英语水平" in CHAPTER_GENERATION_SYSTEM_PROMPT
 
 class TestCreateLLMProvider:
     def test_returns_dashscope_when_api_key_set(self):

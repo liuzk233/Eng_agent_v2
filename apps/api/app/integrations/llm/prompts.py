@@ -43,7 +43,8 @@ CHAPTER_GENERATION_SYSTEM_PROMPT = (
     "1. 英文正文：目标词用 **加粗** 标记\n"
     "2. 目标词必须全部自然融入正文\n"
     "3. 正文长度 300-500 词\n"
-    "4. 附带完整中文翻译\n\n"
+    "4. 英文正文应符合中国大陆初中生可理解英语水平，优先使用清晰自然的表达\n"
+    "5. 附带完整中文翻译\n\n"
     "输出格式（严格 JSON）：\n"
     '{"english_content": "...", "highlighted_target_words": ["word1", "word2"], '
     '"chinese_translation": "..."}'
