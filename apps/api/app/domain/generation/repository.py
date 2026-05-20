@@ -84,6 +84,18 @@ class GenerationRepository:
         self.session.flush()
         return task
 
+    def mark_generation_task_failed(self, task_id: UUID, error_message: str) -> GenerationTask | None:
+        task = self.session.get(GenerationTask, task_id)
+        if task is None:
+            return None
+        now = datetime.now(timezone.utc)
+        task.status = GenerationStatus.failed_internal
+        task.completed_at = now
+        task.fallback_reason = error_message[:500]
+        task.chapter.status = GenerationStatus.failed_internal
+        self.session.flush()
+        return task
+
     def build_generation_state(self, task: GenerationTask) -> GenerationState:
         chapter = task.chapter
         project = chapter.story_project

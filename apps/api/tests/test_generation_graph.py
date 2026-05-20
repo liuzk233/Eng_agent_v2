@@ -1,3 +1,5 @@
+from importlib import metadata
+
 from app.domain.enums import GenerationStatus, StoryStyle
 from app.domain.generation.graphs.chapter_generation import (
     GenerationState,
@@ -13,6 +15,10 @@ from app.integrations.llm.base import (
     UsageRecord,
 )
 from app.integrations.llm.fake_provider import FakeLLMProvider
+
+
+def version_tuple(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split(".") if part.isdigit())
 
 
 def make_state(**overrides) -> GenerationState:
@@ -104,6 +110,10 @@ class TestDecideAfterReview:
 
 
 class TestGenerationGraphEndToEnd:
+    def test_langgraph_dependencies_are_patched_above_known_cve_floor(self):
+        assert version_tuple(metadata.version("langgraph")) >= (1, 0, 10)
+        assert version_tuple(metadata.version("langgraph-checkpoint")) >= (4, 0, 0)
+
     def test_first_chapter_completes_with_fake_provider(self):
         provider = FakeLLMProvider()
         state = make_state(target_words=["adventure", "courage"])

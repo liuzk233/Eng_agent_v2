@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from app.domain.enums import GenerationStatus
 from app.domain.generation.graphs.chapter_generation import GenerationState
 from app.domain.generation.repository import GenerationRepository
 from app.domain.generation.service import GenerationService
+from app.domain.generation.tasks import generation_state_to_payload, run_generation_task
 from app.domain.review.base import QualityReviewResult
 from app.integrations.llm.base import ChapterGenerationOutput
 from app.main import create_app
@@ -327,3 +329,277 @@ def test_completed_generation_writes_chapter_state_summary(monkeypatch) -> None:
 
     assert chapter_state is not None
     assert chapter_state.summary == english_text[:200]
+
+
+def test_mark_generation_task_failed_sets_status_and_error(monkeypatch) -> None:
+    client, testing_session = make_client()
+    token = register_user(client, testing_session, "fail-task@example.com", "FAIL")
+    story = create_story(client, token)
+    submit_words(client, token, story["id"])
+    monkeypatch.setattr(GenerationService, "enqueue", lambda self, state: "celery-task-id")
+
+    task_body = client.post(
+        f"/api/story-projects/{story['id']}/chapters/1/generate",
+        headers=auth_headers(token),
+    ).json()
+
+    with testing_session() as session:
+        repository = GenerationRepository(session)
+        task = repository.mark_generation_task_failed(
+            UUID(task_body["id"]),
+            "LLM API connection timeout",
+        )
+        session.commit()
+
+    assert task is not None
+    assert task.status == GenerationStatus.failed_internal
+    assert task.completed_at is not None
+    assert task.fallback_reason == "LLM API connection timeout"
+    assert task.chapter.status == GenerationStatus.failed_internal
+
+
+def test_mark_generation_task_failed_returns_none_for_missing_task() -> None:
+    _, testing_session = make_client()
+    with testing_session() as session:
+        repository = GenerationRepository(session)
+        result = repository.mark_generation_task_failed(
+            uuid.uuid4(),
+            "some error",
+        )
+
+    assert result is None
+
+
+def test_mark_generation_task_failed_truncates_long_error_message(monkeypatch) -> None:
+    client, testing_session = make_client()
+    token = register_user(client, testing_session, "truncate@example.com", "TRUNC")
+    story = create_story(client, token)
+    submit_words(client, token, story["id"])
+    monkeypatch.setattr(GenerationService, "enqueue", lambda self, state: "celery-task-id")
+
+    task_body = client.post(
+        f"/api/story-projects/{story['id']}/chapters/1/generate",
+        headers=auth_headers(token),
+    ).json()
+
+    long_error = "x" * 600
+
+    with testing_session() as session:
+        repository = GenerationRepository(session)
+        task = repository.mark_generation_task_failed(
+            UUID(task_body["id"]),
+            long_error,
+        )
+        session.commit()
+
+    assert task is not None
+    assert len(task.fallback_reason) == 500
+    assert task.fallback_reason == "x" * 500
+
+
+def test_run_generation_task_marks_failed_when_execute_raises(monkeypatch) -> None:
+    client, testing_session = make_client()
+    monkeypatch.setattr("app.db.session.SessionLocal", testing_session)
+    token = register_user(client, testing_session, "execute-fails@example.com", "EXECFAIL")
+    story = create_story(client, token)
+    submit_words(client, token, story["id"])
+    captured_states: list[GenerationState] = []
+
+    def fake_enqueue(self: GenerationService, state: GenerationState) -> str:
+        captured_states.append(state)
+        return "celery-task-id"
+
+    def fail_execute(self: GenerationService, state: GenerationState) -> GenerationState:
+        raise RuntimeError("LLM provider timeout")
+
+    monkeypatch.setattr(GenerationService, "enqueue", fake_enqueue)
+    monkeypatch.setattr(GenerationService, "execute", fail_execute)
+
+    response = client.post(
+        f"/api/story-projects/{story['id']}/chapters/1/generate",
+        headers=auth_headers(token),
+    )
+    assert response.status_code == 202
+
+    run_generation_task.run(generation_state_to_payload(captured_states[0]))
+
+    with testing_session() as session:
+        task = session.get(GenerationTask, UUID(response.json()["id"]))
+        chapter = session.get(Chapter, UUID(captured_states[0].chapter_id))
+
+    assert task.status == GenerationStatus.failed_internal
+    assert task.fallback_reason == "LLM provider timeout"
+    assert task.completed_at is not None
+    assert chapter.status == GenerationStatus.failed_internal
+
+
+def test_run_generation_task_marks_failed_when_mark_running_raises(monkeypatch) -> None:
+    client, testing_session = make_client()
+    monkeypatch.setattr("app.db.session.SessionLocal", testing_session)
+    token = register_user(client, testing_session, "running-fails@example.com", "RUNFAIL")
+    story = create_story(client, token)
+    submit_words(client, token, story["id"])
+    captured_states: list[GenerationState] = []
+
+    def fake_enqueue(self: GenerationService, state: GenerationState) -> str:
+        captured_states.append(state)
+        return "celery-task-id"
+
+    def fail_mark_running(self: GenerationRepository, task_id: UUID) -> GenerationTask | None:
+        raise RuntimeError("mark_generation_task_running failed")
+
+    monkeypatch.setattr(GenerationService, "enqueue", fake_enqueue)
+    monkeypatch.setattr(GenerationRepository, "mark_generation_task_running", fail_mark_running)
+
+    response = client.post(
+        f"/api/story-projects/{story['id']}/chapters/1/generate",
+        headers=auth_headers(token),
+    )
+    assert response.status_code == 202
+
+    run_generation_task.run(generation_state_to_payload(captured_states[0]))
+
+    with testing_session() as session:
+        task = session.get(GenerationTask, UUID(response.json()["id"]))
+        chapter = session.get(Chapter, UUID(captured_states[0].chapter_id))
+
+    assert task.status == GenerationStatus.failed_internal
+    assert task.fallback_reason == "mark_generation_task_running failed"
+    assert task.completed_at is not None
+    assert chapter.status == GenerationStatus.failed_internal
+
+
+def test_run_generation_task_marks_failed_when_initial_commit_raises(monkeypatch) -> None:
+    client, testing_session = make_client()
+    token = register_user(client, testing_session, "running-commit-fails@example.com", "RUNCOMMIT")
+    story = create_story(client, token)
+    submit_words(client, token, story["id"])
+    captured_states: list[GenerationState] = []
+
+    class FailsFirstCommitSession:
+        has_failed = False
+
+        def __init__(self) -> None:
+            self._session = testing_session()
+
+        def __enter__(self) -> "FailsFirstCommitSession":
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            self._session.close()
+
+        def __getattr__(self, name: str):
+            return getattr(self._session, name)
+
+        def commit(self) -> None:
+            if not FailsFirstCommitSession.has_failed:
+                FailsFirstCommitSession.has_failed = True
+                raise RuntimeError("mark running commit failed")
+            self._session.commit()
+
+    def fake_enqueue(self: GenerationService, state: GenerationState) -> str:
+        captured_states.append(state)
+        return "celery-task-id"
+
+    monkeypatch.setattr(GenerationService, "enqueue", fake_enqueue)
+    monkeypatch.setattr("app.db.session.SessionLocal", FailsFirstCommitSession)
+
+    response = client.post(
+        f"/api/story-projects/{story['id']}/chapters/1/generate",
+        headers=auth_headers(token),
+    )
+    assert response.status_code == 202
+
+    run_generation_task.run(generation_state_to_payload(captured_states[0]))
+
+    with testing_session() as session:
+        task = session.get(GenerationTask, UUID(response.json()["id"]))
+        chapter = session.get(Chapter, UUID(captured_states[0].chapter_id))
+
+    assert task.status == GenerationStatus.failed_internal
+    assert task.fallback_reason == "mark running commit failed"
+    assert task.completed_at is not None
+    assert chapter.status == GenerationStatus.failed_internal
+
+
+def test_run_generation_task_marks_failed_when_payload_parsing_fails_with_valid_task_id(monkeypatch) -> None:
+    """AC-1: payload 含有效 generation_task_id 但其他字段形状导致解析抛错时，task 变为 failed_internal。"""
+    client, testing_session = make_client()
+    monkeypatch.setattr("app.db.session.SessionLocal", testing_session)
+    token = register_user(client, testing_session, "parse-fails@example.com", "PARSEFAIL")
+    story = create_story(client, token)
+    submit_words(client, token, story["id"])
+    captured_states: list[GenerationState] = []
+
+    def fake_enqueue(self: GenerationService, state: GenerationState) -> str:
+        captured_states.append(state)
+        return "celery-task-id"
+
+    monkeypatch.setattr(GenerationService, "enqueue", fake_enqueue)
+
+    response = client.post(
+        f"/api/story-projects/{story['id']}/chapters/1/generate",
+        headers=auth_headers(token),
+    )
+    assert response.status_code == 202
+    task_id = response.json()["id"]
+
+    # Construct a payload with valid generation_task_id but invalid field shapes
+    # to trigger generation_state_from_payload error
+    bad_payload = {
+        "generation_task_id": task_id,
+        "syllabus_allowed_forms": "not-a-dict",  # should be dict[str, set[str]]
+    }
+
+    run_generation_task.run(bad_payload)
+
+    with testing_session() as session:
+        task = session.get(GenerationTask, UUID(task_id))
+        chapter = session.get(Chapter, UUID(captured_states[0].chapter_id))
+
+    assert task.status == GenerationStatus.failed_internal
+    assert task.completed_at is not None
+    assert task.fallback_reason is not None
+    assert len(task.fallback_reason) > 0
+    assert chapter.status == GenerationStatus.failed_internal
+
+
+def test_run_generation_task_marks_failed_when_completion_persistence_raises(monkeypatch) -> None:
+    client, testing_session = make_client()
+    monkeypatch.setattr("app.db.session.SessionLocal", testing_session)
+    token = register_user(client, testing_session, "completion-fails@example.com", "COMPFAIL")
+    story = create_story(client, token)
+    submit_words(client, token, story["id"])
+    captured_states: list[GenerationState] = []
+
+    def fake_enqueue(self: GenerationService, state: GenerationState) -> str:
+        captured_states.append(state)
+        return "celery-task-id"
+
+    def fake_execute(self: GenerationService, state: GenerationState) -> GenerationState:
+        state.final_status = GenerationStatus.completed
+        return state
+
+    def fail_complete(self: GenerationRepository, state: GenerationState) -> GenerationTask | None:
+        raise RuntimeError("complete_generation_task failed")
+
+    monkeypatch.setattr(GenerationService, "enqueue", fake_enqueue)
+    monkeypatch.setattr(GenerationService, "execute", fake_execute)
+    monkeypatch.setattr(GenerationRepository, "complete_generation_task", fail_complete)
+
+    response = client.post(
+        f"/api/story-projects/{story['id']}/chapters/1/generate",
+        headers=auth_headers(token),
+    )
+    assert response.status_code == 202
+
+    run_generation_task.run(generation_state_to_payload(captured_states[0]))
+
+    with testing_session() as session:
+        task = session.get(GenerationTask, UUID(response.json()["id"]))
+        chapter = session.get(Chapter, UUID(captured_states[0].chapter_id))
+
+    assert task.status == GenerationStatus.failed_internal
+    assert task.fallback_reason == "complete_generation_task failed"
+    assert task.completed_at is not None
+    assert chapter.status == GenerationStatus.failed_internal

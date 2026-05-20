@@ -3,6 +3,8 @@ import type { GenerationStatus } from "../../lib/api/types";
 interface GenerationStatusIndicatorProps {
   status: GenerationStatus;
   retryCount?: number;
+  isStale?: boolean;
+  onRetry?: () => void;
 }
 
 const STATUS_CONFIG: Record<GenerationStatus, { label: string; className: string }> = {
@@ -15,21 +17,47 @@ const STATUS_CONFIG: Record<GenerationStatus, { label: string; className: string
   failed_internal: { label: "生成异常", className: "gen-status--failed" },
 };
 
+const POLLING_STATUSES: GenerationStatus[] = ["queued", "running", "reviewing", "retrying"];
+
 export function GenerationStatusIndicator({
   status,
   retryCount = 0,
+  isStale = false,
+  onRetry,
 }: GenerationStatusIndicatorProps) {
+  const isStalePolling = isStale && POLLING_STATUSES.includes(status);
+  const isFailed = status === "failed_internal";
+
+  if (isStalePolling) {
+    return (
+      <div className="gen-status-indicator" role="status" aria-live="polite">
+        <span className="gen-status-dot gen-status--failed" />
+        <span className="gen-status-label text-label">生成超时，请重试</span>
+        {onRetry && (
+          <button className="gen-status-retry-btn" onClick={onRetry} type="button">
+            重试
+          </button>
+        )}
+      </div>
+    );
+  }
+
   const config = STATUS_CONFIG[status];
-  const showRetry = status === "retrying" && retryCount > 0;
+  const showRetryCount = status === "retrying" && retryCount > 0;
 
   return (
     <div className="gen-status-indicator" role="status" aria-live="polite">
       <span className={`gen-status-dot ${config.className}`} />
       <span className="gen-status-label text-label">{config.label}</span>
-      {showRetry && (
+      {showRetryCount && (
         <span className="gen-status-retry text-micro-label">
           （第 {retryCount} 次重试）
         </span>
+      )}
+      {isFailed && onRetry && (
+        <button className="gen-status-retry-btn" onClick={onRetry} type="button">
+          重试
+        </button>
       )}
     </div>
   );

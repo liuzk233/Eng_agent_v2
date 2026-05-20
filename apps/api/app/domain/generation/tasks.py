@@ -51,23 +51,53 @@ def _json_safe(value: Any) -> Any:
 
 @celery_app.task(name="generation.run_chapter")
 def run_generation_task(payload: dict[str, Any]) -> dict[str, Any]:
+    import logging
     from uuid import UUID
 
     from app.db.session import SessionLocal
     from app.domain.generation.repository import GenerationRepository
     from app.domain.generation.service import GenerationService
 
-    state = generation_state_from_payload(payload)
-    with SessionLocal() as session:
-        repository = GenerationRepository(session)
-        repository.mark_generation_task_running(UUID(state.generation_task_id))
-        session.commit()
+    logger = logging.getLogger(__name__)
 
-    result = GenerationService().execute(state)
+    raw_task_id = payload.get("generation_task_id")
+    task_id: UUID | None = None
+    if raw_task_id is not None:
+        try:
+            task_id = UUID(str(raw_task_id))
+        except (ValueError, TypeError):
+            pass
 
-    with SessionLocal() as session:
-        repository = GenerationRepository(session)
-        repository.complete_generation_task(result)
-        session.commit()
+    try:
+        state = generation_state_from_payload(payload)
+        if task_id is None:
+            task_id = UUID(state.generation_task_id)
 
-    return generation_state_to_payload(result)
+        with SessionLocal() as session:
+            repository = GenerationRepository(session)
+            repository.mark_generation_task_running(task_id)
+            session.commit()
+
+        result = GenerationService().execute(state)
+
+        with SessionLocal() as session:
+            repository = GenerationRepository(session)
+            repository.complete_generation_task(result)
+            session.commit()
+
+        return generation_state_to_payload(result)
+    except Exception as exc:
+        task_id_str = str(task_id) if task_id is not None else "<unidentifiable>"
+        logger.exception(
+            "generation.task_failed",
+            extra={"generation_task_id": task_id_str},
+        )
+        if task_id is not None:
+            with SessionLocal() as session:
+                repository = GenerationRepository(session)
+                repository.mark_generation_task_failed(task_id, str(exc))
+                session.commit()
+            return generation_state_to_payload(GenerationState(
+                generation_task_id=str(task_id),
+            ))
+        raise

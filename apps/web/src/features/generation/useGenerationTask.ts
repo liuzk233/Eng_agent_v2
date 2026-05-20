@@ -9,6 +9,8 @@ const POLLING_STATUSES: GenerationStatus[] = [
   "retrying",
 ];
 
+const STALE_THRESHOLD_MS = 300_000; // 5 minutes
+
 export function useGenerationTask(
   apiClient: ApiClient,
   taskId: string | null,
@@ -19,16 +21,25 @@ export function useGenerationTask(
     enabled: !!taskId,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      if (status && POLLING_STATUSES.includes(status)) {
-        return 3000;
+      if (!status || !POLLING_STATUSES.includes(status)) return false;
+      const createdAt = query.state.data?.createdAt;
+      if (createdAt && Date.now() - new Date(createdAt).getTime() > STALE_THRESHOLD_MS) {
+        return false;
       }
-      return false;
+      return 3000;
     },
   });
 
   const isPolling = !!(
     query.data?.status &&
     POLLING_STATUSES.includes(query.data.status)
+  );
+
+  const isStale = !!(
+    query.data?.status &&
+    POLLING_STATUSES.includes(query.data.status) &&
+    query.data.createdAt &&
+    Date.now() - new Date(query.data.createdAt).getTime() > STALE_THRESHOLD_MS
   );
 
   const isTerminal = !!(
@@ -39,6 +50,7 @@ export function useGenerationTask(
   return {
     task: query.data ?? null,
     isPolling,
+    isStale,
     isTerminal,
     isLoading: query.isLoading,
     error: query.error,

@@ -189,6 +189,23 @@ export function useChapterFlow(
     setState((s) => ({ ...s, ...createChapterState(s.chapterNumber + 1) }));
   }, []);
 
+  const retryGeneration = useCallback(async () => {
+    if (!storyProjectId) return;
+    setState((s) => ({ ...s, isGenerating: true, generationStatus: "running" }));
+    try {
+      const result = await apiClient.generateChapter(storyProjectId, state.chapterNumber);
+      setState((s) => ({
+        ...s,
+        generationTaskId: result.id,
+        generationStatus: result.status,
+        retryCount: result.retryCount,
+        isGenerating: true,
+      }));
+    } catch {
+      setState((s) => ({ ...s, isGenerating: false, generationStatus: "failed_internal" }));
+    }
+  }, [apiClient, storyProjectId, state.chapterNumber]);
+
   const selectChapter = useCallback(async (chapterNumber: number) => {
     if (!storyProjectId) return;
     if (chapterNumber === state.chapterNumber && (state.output || state.generationTaskId)) {
@@ -227,6 +244,7 @@ export function useChapterFlow(
     setTargetWords,
     submitWords,
     startGeneration,
+    retryGeneration,
     applyGenerationTask,
     loadCompletedChapter,
     startNextChapter,

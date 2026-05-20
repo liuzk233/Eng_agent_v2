@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { GenerationStatusIndicator } from "../GenerationStatusIndicator";
 
 describe("GenerationStatusIndicator", () => {
@@ -52,5 +52,37 @@ describe("GenerationStatusIndicator", () => {
   it("has aria-live for accessibility", () => {
     render(<GenerationStatusIndicator status="running" />);
     expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("shows '生成异常' and retry button for failed_internal status", () => {
+    const onRetry = vi.fn();
+    render(<GenerationStatusIndicator status="failed_internal" onRetry={onRetry} />);
+    expect(screen.getByText("生成异常")).toBeInTheDocument();
+    expect(screen.getByText("重试")).toBeInTheDocument();
+  });
+
+  it("shows '生成超时，请重试' when isStale and polling status", () => {
+    const onRetry = vi.fn();
+    render(<GenerationStatusIndicator status="running" isStale onRetry={onRetry} />);
+    expect(screen.getByText("生成超时，请重试")).toBeInTheDocument();
+    expect(screen.getByText("重试")).toBeInTheDocument();
+  });
+
+  it("does not show stale message when isStale but status is not polling", () => {
+    render(<GenerationStatusIndicator status="completed" isStale />);
+    expect(screen.queryByText("生成超时，请重试")).not.toBeInTheDocument();
+    expect(screen.getByText("生成通过")).toBeInTheDocument();
+  });
+
+  it("calls onRetry when retry button is clicked", async () => {
+    const onRetry = vi.fn();
+    render(<GenerationStatusIndicator status="failed_internal" onRetry={onRetry} />);
+    fireEvent.click(screen.getByText("重试"));
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it("does not show retry button for failed_internal without onRetry", () => {
+    render(<GenerationStatusIndicator status="failed_internal" />);
+    expect(screen.queryByText("重试")).not.toBeInTheDocument();
   });
 });

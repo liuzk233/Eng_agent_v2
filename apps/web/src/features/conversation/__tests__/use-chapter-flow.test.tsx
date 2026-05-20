@@ -320,4 +320,39 @@ describe("useChapterFlow", () => {
     expect(result.current.isGenerating).toBe(true);
     expect(getChapter).not.toHaveBeenCalled();
   });
+
+  it("retryGeneration calls generateChapter and updates task state", async () => {
+    const getChapter = vi.fn()
+      .mockResolvedValueOnce(chapterResponse("story-retry", "First **alpha**.", ["alpha"], 1));
+    const listChapters = vi.fn().mockResolvedValue([]);
+    const generateChapter = vi.fn().mockResolvedValue({
+      id: "retry-task-1",
+      chapterId: "chapter-1",
+      status: "queued",
+      retryCount: 0,
+      createdAt: "2026-05-19T00:00:00Z",
+      updatedAt: "2026-05-19T00:00:00Z",
+    });
+    const client = {
+      getChapter,
+      listChapters,
+      generateChapter,
+    } as unknown as ApiClient;
+
+    const { result } = renderHook(() => useChapterFlow(client, "story-retry"));
+
+    await waitFor(() => {
+      expect(result.current.output?.englishContent).toBe("First **alpha**.");
+    });
+
+    await act(async () => {
+      await result.current.retryGeneration();
+    });
+
+    expect(generateChapter).toHaveBeenCalledWith("story-retry", 1);
+    expect(result.current.generationTaskId).toBe("retry-task-1");
+    expect(result.current.generationStatus).toBe("queued");
+    expect(result.current.isGenerating).toBe(true);
+    expect(result.current.output?.englishContent).toBe("First **alpha**.");
+  });
 });

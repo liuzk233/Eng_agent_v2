@@ -135,6 +135,8 @@ function StoryApp() {
         <GenerationStatusIndicator
           status={chapterFlow.generationStatus as "queued" | "running" | "reviewing" | "retrying" | "completed" | "fallback_completed" | "failed_internal"}
           retryCount={chapterFlow.retryCount}
+          isStale={generationTask.isStale}
+          onRetry={chapterFlow.retryGeneration}
         />
       )}
 
