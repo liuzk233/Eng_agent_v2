@@ -58,6 +58,35 @@ class DashScopeProvider(LLMProvider):
 
         return output, usage
 
+    def judge_background_words(
+        self,
+        *,
+        english_content: str,
+        candidate_words: list[str],
+    ) -> dict[str, str]:
+        unique_candidates = list(dict.fromkeys(word.strip().lower() for word in candidate_words if word.strip()))
+        if not unique_candidates:
+            return {}
+
+        self.call_count += 1
+        system_prompt = (
+            "你是中国大陆初中英语阅读难度审校员。"
+            "判断候选背景词是否真正超过中国大陆初中生通常可理解英语水平，"
+            "只返回严格 JSON。"
+        )
+        user_prompt = (
+            "英文正文：\n"
+            f"{english_content}\n\n"
+            "候选背景词：\n"
+            f"{json.dumps(unique_candidates, ensure_ascii=False)}\n\n"
+            "输出格式："
+            '{"words":[{"word":"candidate","is_true_out_of_syllabus":true,"translation_cn":"中文释义"}]}'
+            "。非真正超纲词也要返回，但 is_true_out_of_syllabus 必须为 false。"
+        )
+        response_body = self._call_api(system_prompt, user_prompt)
+        content = response_body["choices"][0]["message"]["content"]
+        return self._parse_background_word_judgement(content)
+
     def _call_api(self, system_prompt: str, user_prompt: str) -> dict:
         payload = {
             "model": self.model,
@@ -144,6 +173,33 @@ class DashScopeProvider(LLMProvider):
                 highlighted_target_words=target_words,
                 chinese_translation="",
             )
+
+    def _parse_background_word_judgement(self, content: str) -> dict[str, str]:
+        text = self._strip_json_code_block(content)
+        parsed = json.loads(text)
+        rows = parsed.get("words") if isinstance(parsed, dict) else parsed
+        if not isinstance(rows, list):
+            raise ValueError("Background word judgement must be a JSON object with words list")
+
+        true_words: dict[str, str] = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                raise ValueError("Background word judgement rows must be objects")
+            word = str(row.get("word", "")).strip().lower()
+            translation_cn = str(row.get("translation_cn", "")).strip()
+            if row.get("is_true_out_of_syllabus") is True and word and translation_cn:
+                true_words[word] = translation_cn
+        return true_words
+
+    def _strip_json_code_block(self, content: str) -> str:
+        text = content.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            text = "\n".join(lines)
+        return text
 
     def _extract_usage(self, body: dict) -> UsageRecord:
         usage = body.get("usage", {})
