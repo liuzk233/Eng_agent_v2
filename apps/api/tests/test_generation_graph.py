@@ -75,6 +75,50 @@ class StaticLLMProvider(LLMProvider):
         )
 
 
+class FailingThenStaticLLMProvider(StaticLLMProvider):
+    def __init__(self, english_content: str, *, fail_times: int) -> None:
+        super().__init__(english_content)
+        self.fail_times = fail_times
+        self.attempts = 0
+
+    def generate_chapter(
+        self,
+        input_data: ChapterGenerationInput,
+        retry_config: RetryConfig | None = None,
+    ) -> tuple[ChapterGenerationOutput, UsageRecord]:
+        self.attempts += 1
+        if self.attempts <= self.fail_times:
+            raise RuntimeError("temporary provider failure")
+        return super().generate_chapter(input_data, retry_config)
+
+
+class JudgingStaticLLMProvider(StaticLLMProvider):
+    def __init__(
+        self,
+        english_content: str,
+        judgement_result: dict[str, str] | None = None,
+        *,
+        judgement_fail_times: int = 0,
+    ) -> None:
+        super().__init__(english_content)
+        self.judgement_result = judgement_result or {}
+        self.judgement_fail_times = judgement_fail_times
+        self.judgement_attempts = 0
+        self.judged_candidates: list[str] = []
+
+    def judge_background_words(
+        self,
+        *,
+        english_content: str,
+        candidate_words: list[str],
+    ) -> dict[str, str]:
+        self.judgement_attempts += 1
+        self.judged_candidates = list(candidate_words)
+        if self.judgement_attempts <= self.judgement_fail_times:
+            raise RuntimeError("temporary judgement failure")
+        return dict(self.judgement_result)
+
+
 def compliant_english_content(target_word: str = "adventure") -> str:
     opening = f"The student will learn {target_word} with a friend today."
     repeated = "The student will learn with a friend at school today."
@@ -91,17 +135,17 @@ class TestDecideAfterReview:
         state.quality_result = QualityReviewResult(passed=True)
         assert decide_after_review(state) == "accept"
 
-    def test_retry_when_not_passed_and_retries_left(self):
+    def test_accept_when_not_passed_because_quality_failures_do_not_retry(self):
         state = make_state()
         state.quality_result = QualityReviewResult(passed=False)
         state.retry_count = 0
-        assert decide_after_review(state) == "retry"
+        assert decide_after_review(state) == "accept"
 
-    def test_fallback_when_max_retries_exceeded(self):
+    def test_accept_when_not_passed_and_max_retries_exceeded(self):
         state = make_state()
         state.quality_result = QualityReviewResult(passed=False)
         state.retry_count = 3
-        assert decide_after_review(state) == "fallback"
+        assert decide_after_review(state) == "accept"
 
     def test_fallback_when_no_quality_result(self):
         state = make_state()
@@ -165,7 +209,7 @@ class TestGenerationGraphEndToEnd:
         assert result.quality_result.out_of_syllabus_words == []
         assert result.quality_result.target_word_hits == {"adventure": 1}
 
-    def test_high_out_of_syllabus_rate_triggers_retry_or_fallback(self):
+    def test_high_out_of_syllabus_rate_completes_without_regenerating_body(self):
         provider = StaticLLMProvider(compliant_english_content("adventure"))
         state = make_state(
             target_words=["adventure"],
@@ -175,12 +219,12 @@ class TestGenerationGraphEndToEnd:
         )
         result = run_generation(state, provider)
 
-        assert result.final_status == GenerationStatus.fallback_completed
-        assert result.retry_count == 1
+        assert result.final_status == GenerationStatus.completed
+        assert result.retry_count == 0
         assert result.out_of_syllabus_rate > state.max_out_of_syllabus_rate
-        assert provider.call_count == 2
+        assert provider.call_count == 1
 
-    def test_fallback_after_max_retries(self):
+    def test_quality_review_failure_does_not_fallback_after_max_retries(self):
         provider = FakeLLMProvider()
         state = make_state(
             target_words=["adventure"],
@@ -190,24 +234,78 @@ class TestGenerationGraphEndToEnd:
         )
         result = run_generation(state, provider)
 
-        assert result.final_status == GenerationStatus.fallback_completed
+        assert result.final_status == GenerationStatus.completed
         assert result.draft_output is not None
         assert result.retry_count == 0
         assert result.out_of_syllabus_rate > state.max_out_of_syllabus_rate
 
-    def test_retry_increments_counter(self):
-        provider = StaticLLMProvider(compliant_english_content("adventure"))
+    def test_technical_generation_failure_retries_and_then_completes(self):
+        provider = FailingThenStaticLLMProvider(compliant_english_content("adventure"), fail_times=1)
         state = make_state(
             target_words=["adventure"],
-            syllabus_lemmas=set(),
-            max_out_of_syllabus_rate=0.0001,
+            syllabus_lemmas=compliant_syllabus_lemmas(),
             max_retries=2,
         )
         result = run_generation(state, provider)
 
-        assert result.retry_count == 2
-        assert result.final_status == GenerationStatus.fallback_completed
-        assert provider.call_count == 3
+        assert result.retry_count == 1
+        assert result.final_status == GenerationStatus.completed
+        assert provider.attempts == 2
+
+    def test_true_background_words_keep_chinese_translation_after_judgement(self):
+        provider = JudgingStaticLLMProvider(
+            compliant_english_content("adventure").replace("with a friend", "with lint"),
+            {"lint": "粘毛"},
+        )
+        state = make_state(
+            target_words=["adventure"],
+            syllabus_lemmas=compliant_syllabus_lemmas(),
+            max_out_of_syllabus_rate=0.001,
+        )
+        result = run_generation(state, provider)
+
+        assert result.final_status == GenerationStatus.completed
+        assert result.quality_result is not None
+        assert [(word.word, word.translation_cn) for word in result.quality_result.out_of_syllabus_words] == [
+            ("lint", "粘毛")
+        ]
+        assert "lint" in provider.judged_candidates
+
+    def test_non_true_background_candidates_are_not_annotated(self):
+        provider = JudgingStaticLLMProvider(
+            compliant_english_content("adventure").replace("with a friend", "with robot"),
+            {},
+        )
+        state = make_state(
+            target_words=["adventure"],
+            syllabus_lemmas=compliant_syllabus_lemmas(),
+            max_out_of_syllabus_rate=0.001,
+        )
+        result = run_generation(state, provider)
+
+        assert result.final_status == GenerationStatus.completed
+        assert result.quality_result is not None
+        assert result.quality_result.out_of_syllabus_words == []
+        assert "robot" in provider.judged_candidates
+
+    def test_background_word_judgement_technical_failure_retries(self):
+        provider = JudgingStaticLLMProvider(
+            compliant_english_content("adventure").replace("with a friend", "with lint"),
+            {"lint": "粘毛"},
+            judgement_fail_times=1,
+        )
+        state = make_state(
+            target_words=["adventure"],
+            syllabus_lemmas=compliant_syllabus_lemmas(),
+            max_out_of_syllabus_rate=0.001,
+            max_retries=2,
+        )
+        result = run_generation(state, provider)
+
+        assert result.final_status == GenerationStatus.completed
+        assert result.retry_count == 1
+        assert provider.call_count == 2
+        assert provider.judgement_attempts == 2
 
     def test_continuity_rule_applied_for_subsequent_chapter(self):
         provider = RecordingFakeLLMProvider()

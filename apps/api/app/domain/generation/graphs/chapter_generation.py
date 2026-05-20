@@ -7,6 +7,7 @@ from langgraph.graph import END, StateGraph
 
 from app.domain.enums import GenerationStatus, ReviewResult, StoryStyle
 from app.domain.review.base import (
+    OutOfSyllabusFinding,
     QualityReviewContext,
     QualityReviewResult,
     QualityRule,
@@ -55,6 +56,7 @@ class GenerationState:
     out_of_syllabus_rate: float = 0.0
     review_feedback: str = ""
     final_status: str = GenerationStatus.queued
+    technical_error: str = ""
 
     syllabus_lemmas: set[str] = field(default_factory=set)
     syllabus_allowed_forms: dict[str, set[str]] = field(default_factory=dict)
@@ -82,8 +84,39 @@ def generate_draft_node(state: GenerationState, *, provider: LLMProvider) -> dic
         chapter_number=state.chapter_number,
         target_chapter_count=state.target_chapter_count,
     )
-    output, _usage = provider.generate_chapter(input_data)
-    return {"draft_output": output, "final_status": GenerationStatus.reviewing}
+    try:
+        output, _usage = provider.generate_chapter(input_data)
+    except Exception as exc:
+        return {
+            "draft_output": None,
+            "technical_error": f"chapter_generation_failed: {exc}",
+            "review_feedback": str(exc),
+            "final_status": GenerationStatus.failed_internal,
+        }
+
+    if not output.english_content.strip():
+        return {
+            "draft_output": None,
+            "technical_error": "chapter_generation_empty_english_content",
+            "review_feedback": "模型返回正文为空",
+            "final_status": GenerationStatus.failed_internal,
+        }
+
+    return {
+        "draft_output": output,
+        "technical_error": "",
+        "final_status": GenerationStatus.reviewing,
+    }
+
+
+def decide_after_generate(state: GenerationState) -> Literal["review", "retry", "fallback"]:
+    if not state.technical_error:
+        return "review"
+
+    if state.retry_count < state.max_retries:
+        return "retry"
+
+    return "fallback"
 
 
 def review_node(state: GenerationState) -> dict:
@@ -131,7 +164,46 @@ def decide_after_review(state: GenerationState) -> Literal["accept", "retry", "f
     if state.quality_result is None:
         return "fallback"
 
-    if state.quality_result.passed:
+    return "accept"
+
+
+def judge_background_words_node(state: GenerationState, *, provider: LLMProvider) -> dict:
+    if state.draft_output is None or state.quality_result is None:
+        return {
+            "technical_error": "background_word_judgement_missing_review_result",
+            "final_status": GenerationStatus.failed_internal,
+        }
+
+    candidates = [finding.word for finding in state.quality_result.out_of_syllabus_words]
+    if not candidates:
+        return {"technical_error": ""}
+
+    judge = getattr(provider, "judge_background_words", None)
+    if not callable(judge):
+        state.quality_result.out_of_syllabus_words = []
+        return {"quality_result": state.quality_result, "technical_error": ""}
+
+    try:
+        true_words = judge(
+            english_content=state.draft_output.english_content,
+            candidate_words=candidates,
+        )
+    except Exception as exc:
+        return {
+            "technical_error": f"background_word_judgement_failed: {exc}",
+            "review_feedback": str(exc),
+            "final_status": GenerationStatus.failed_internal,
+        }
+
+    state.quality_result.out_of_syllabus_words = [
+        OutOfSyllabusFinding(word=word, translation_cn=translation_cn)
+        for word, translation_cn in true_words.items()
+    ]
+    return {"quality_result": state.quality_result, "technical_error": ""}
+
+
+def decide_after_judgement(state: GenerationState) -> Literal["accept", "retry", "fallback"]:
+    if not state.technical_error:
         return "accept"
 
     if state.retry_count < state.max_retries:
@@ -143,6 +215,7 @@ def decide_after_review(state: GenerationState) -> Literal["accept", "retry", "f
 def retry_node(state: GenerationState) -> dict:
     return {
         "retry_count": state.retry_count + 1,
+        "technical_error": "",
         "final_status": GenerationStatus.retrying,
     }
 
@@ -164,14 +237,24 @@ def build_chapter_generation_graph(provider: LLMProvider) -> StateGraph:
     graph.add_node("load_context", load_context_node)
     graph.add_node("generate_draft", lambda s: generate_draft_node(s, provider=provider))
     graph.add_node("review", review_node)
+    graph.add_node("judge_background_words", lambda s: judge_background_words_node(s, provider=provider))
     graph.add_node("retry", retry_node)
     graph.add_node("accept", accept_node)
     graph.add_node("fallback", fallback_node)
 
     graph.set_entry_point("load_context")
     graph.add_edge("load_context", "generate_draft")
-    graph.add_edge("generate_draft", "review")
+    graph.add_conditional_edges("generate_draft", decide_after_generate, {
+        "review": "review",
+        "retry": "retry",
+        "fallback": "fallback",
+    })
     graph.add_conditional_edges("review", decide_after_review, {
+        "accept": "judge_background_words",
+        "retry": "retry",
+        "fallback": "fallback",
+    })
+    graph.add_conditional_edges("judge_background_words", decide_after_judgement, {
         "accept": "accept",
         "retry": "retry",
         "fallback": "fallback",
