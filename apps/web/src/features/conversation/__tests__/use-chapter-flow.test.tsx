@@ -106,6 +106,34 @@ describe("useChapterFlow", () => {
     expect(result.current.targetWords).toEqual(["pass", "exit", "kill"]);
   });
 
+  it("restores a history story draft chapter as pending instead of word selection", async () => {
+    const chapters = [
+      chapterListItem("story-history-pending", 1, "completed"),
+      chapterListItem("story-history-pending", 2, "completed"),
+      chapterListItem("story-history-pending", 3, "draft", null, ["past", "go", "test"]),
+    ];
+    const getChapter = vi.fn().mockRejectedValue(new Error("not found"));
+    const listChapters = vi.fn().mockResolvedValue(chapters);
+    const generateChapter = vi.fn();
+    const client = { getChapter, listChapters, generateChapter } as unknown as ApiClient;
+
+    const { result } = renderHook(() =>
+      useChapterFlow(client, "story-history-pending", [], 3),
+    );
+
+    await waitFor(() => {
+      expect(result.current.chapters).toHaveLength(3);
+    });
+
+    expect(result.current.chapterNumber).toBe(3);
+    expect(result.current.output).toBeNull();
+    expect(result.current.isPendingDraft).toBe(true);
+    expect(result.current.isGenerating).toBe(false);
+    expect(result.current.generationTaskId).toBeNull();
+    expect(getChapter).not.toHaveBeenCalledWith("story-history-pending", 3);
+    expect(generateChapter).not.toHaveBeenCalled();
+  });
+
   it("moves to the next chapter and generates against that chapter number", async () => {
     const getChapter = vi.fn()
       .mockResolvedValueOnce(chapterResponse("story-serial", "First **alpha**.", ["alpha"], 1));

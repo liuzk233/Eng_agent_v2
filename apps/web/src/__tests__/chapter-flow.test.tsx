@@ -36,6 +36,13 @@ const story: StoryProjectResponse = {
   updatedAt: "2026-05-20T00:00:00Z",
 };
 
+function storyWithCurrentChapter(currentChapterNumber: number): StoryProjectResponse {
+  return {
+    ...story,
+    currentChapterNumber,
+  };
+}
+
 function chapterListItem(chapterNumber: number, status = "completed"): ChapterListItem {
   return {
     id: `chapter-${chapterNumber}`,
@@ -67,6 +74,23 @@ function mockStoryApp(chapters: ChapterListItem[]) {
   vi.spyOn(apiClient, "getChapter").mockResolvedValue({
     id: "chapter-1",
     storyProjectId: story.id,
+    chapterNumber: 1,
+    status: "completed",
+    output: {
+      englishContent: "She showed great **courage**.",
+      highlightedTargetWords: ["courage"],
+      chineseTranslation: "她展现了勇气。",
+    },
+  });
+}
+
+function mockStoryAppWithStory(currentStory: StoryProjectResponse, chapters: ChapterListItem[]) {
+  sessionStorage.setItem("vsl_token", "test-token");
+  vi.spyOn(apiClient, "listStoryProjects").mockResolvedValue([currentStory]);
+  vi.spyOn(apiClient, "listChapters").mockResolvedValue(chapters);
+  vi.spyOn(apiClient, "getChapter").mockResolvedValue({
+    id: "chapter-1",
+    storyProjectId: currentStory.id,
     chapterNumber: 1,
     status: "completed",
     output: {
@@ -228,6 +252,27 @@ describe("Chapter Flow Integration", () => {
 
     await waitFor(() => {
       expect(screen.getByText("第 2 章 / 共 3 章")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("待生成").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByLabelText("目标词")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "从词库选择" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认目标词" })).not.toBeInTheDocument();
+    expect(screen.queryByText("past")).not.toBeInTheDocument();
+  });
+
+  it("shows only pending status when opening a history story on a draft chapter", async () => {
+    const historyStory = storyWithCurrentChapter(3);
+    mockStoryAppWithStory(historyStory, [
+      chapterListItem(1),
+      chapterListItem(2),
+      draftChapterListItem(3, ["past", "go", "test"]),
+    ]);
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /Serial Story/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText("第 3 章 / 共 3 章")).toBeInTheDocument();
     });
     expect(screen.getAllByText("待生成").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByLabelText("目标词")).not.toBeInTheDocument();

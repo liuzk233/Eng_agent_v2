@@ -46,6 +46,15 @@ function targetWordsFromChapter(chapter: ChapterListItem | undefined): string[] 
   return chapter?.targetWords.map((word) => word.word) ?? [];
 }
 
+function isPendingDraftChapter(
+  chapter: ChapterListItem | undefined,
+  restoredTaskState: Partial<ChapterFlowState>,
+): boolean {
+  return chapter?.status === "draft" &&
+    !chapter.hasOutput &&
+    !restoredTaskState.generationTaskId;
+}
+
 function restoreTaskState(chapter: ChapterListItem | undefined): Partial<ChapterFlowState> {
   const task = chapter?.latestGenerationTask;
   if (!task || !isPollingStatus(task.status)) return {};
@@ -82,17 +91,35 @@ export function useChapterFlow(
       if (ignore) return;
       const initialListedChapter = findChapter(chapters, initialChapterNumber);
       const initialRestoredTaskState = restoreTaskState(initialListedChapter);
+      const initialTargetWords = targetWordsFromChapter(initialListedChapter);
 
       if (initialRestoredTaskState.generationTaskId) {
         setState((s) => ({
           ...s,
           chapters,
           chapterNumber: initialChapterNumber,
-          targetWords: targetWordsFromChapter(initialListedChapter).length > 0
-            ? targetWordsFromChapter(initialListedChapter)
+          targetWords: initialTargetWords.length > 0
+            ? initialTargetWords
             : s.targetWords,
+          isPendingDraft: false,
           output: null,
           ...initialRestoredTaskState,
+        }));
+        return;
+      }
+
+      if (isPendingDraftChapter(initialListedChapter, initialRestoredTaskState)) {
+        setState((s) => ({
+          ...s,
+          chapters,
+          chapterNumber: initialChapterNumber,
+          targetWords: initialTargetWords,
+          isPendingDraft: true,
+          isGenerating: false,
+          generationStatus: null,
+          output: null,
+          generationTaskId: null,
+          retryCount: 0,
         }));
         return;
       }
@@ -218,10 +245,7 @@ export function useChapterFlow(
     const selectedChapter = findChapter(state.chapters, chapterNumber);
     const selectedTargetWords = targetWordsFromChapter(selectedChapter);
     const restoredTaskState = restoreTaskState(selectedChapter);
-    const isPendingDraft =
-      selectedChapter?.status === "draft" &&
-      !selectedChapter.hasOutput &&
-      !restoredTaskState.generationTaskId;
+    const isPendingDraft = isPendingDraftChapter(selectedChapter, restoredTaskState);
     setState((s) => ({
       ...s,
       ...createChapterState(chapterNumber, selectedTargetWords),
