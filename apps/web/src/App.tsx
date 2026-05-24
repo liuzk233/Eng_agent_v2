@@ -130,8 +130,15 @@ function StoryApp() {
         第 {chapterFlow.chapterNumber} 章 / 共 {selectedStory.targetChapterCount} 章
       </div>
 
-      {chapterFlow.targetWords.length > 0 && (
+      {chapterFlow.targetWords.length > 0 && !chapterFlow.isPendingDraft && (
         <UserWordsCard words={chapterFlow.targetWords} />
+      )}
+
+      {chapterFlow.isPendingDraft && (
+        <div className="gen-status-indicator" role="status" aria-live="polite">
+          <span className="gen-status-dot gen-status--queued" />
+          <span className="gen-status-label text-label">待生成</span>
+        </div>
       )}
 
       {chapterFlow.generationStatus && (
@@ -171,7 +178,7 @@ function StoryApp() {
         </>
       )}
 
-      {!chapterFlow.isGenerating && !chapterFlow.output && (
+      {!chapterFlow.isGenerating && !chapterFlow.output && !chapterFlow.isPendingDraft && (
         <TargetWordsInputDock
           words={chapterFlow.targetWords}
           onWordsChange={chapterFlow.setTargetWords}

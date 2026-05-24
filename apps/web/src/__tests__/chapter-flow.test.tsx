@@ -48,6 +48,18 @@ function chapterListItem(chapterNumber: number, status = "completed"): ChapterLi
   };
 }
 
+function draftChapterListItem(chapterNumber: number, targetWords: string[]): ChapterListItem {
+  return {
+    ...chapterListItem(chapterNumber, "draft"),
+    targetWords: targetWords.map((word, position) => ({
+      word,
+      lemma: word,
+      source: "manual",
+      position,
+    })),
+  };
+}
+
 function mockStoryApp(chapters: ChapterListItem[]) {
   sessionStorage.setItem("vsl_token", "test-token");
   vi.spyOn(apiClient, "listStoryProjects").mockResolvedValue([story]);
@@ -200,5 +212,27 @@ describe("Chapter Flow Integration", () => {
       expect(screen.getByText("第 2 章 / 共 3 章")).toBeInTheDocument();
     });
     expect(screen.getByLabelText("目标词")).toBeInTheDocument();
+  });
+
+  it("shows only pending status when selecting an existing draft chapter", async () => {
+    mockStoryApp([
+      chapterListItem(1),
+      draftChapterListItem(2, ["past", "go", "test"]),
+    ]);
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /Serial Story/ }));
+    await screen.findByText("她展现了勇气。");
+
+    fireEvent.click(screen.getByRole("button", { name: /第 2 章/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText("第 2 章 / 共 3 章")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("待生成").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByLabelText("目标词")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "从词库选择" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认目标词" })).not.toBeInTheDocument();
+    expect(screen.queryByText("past")).not.toBeInTheDocument();
   });
 });

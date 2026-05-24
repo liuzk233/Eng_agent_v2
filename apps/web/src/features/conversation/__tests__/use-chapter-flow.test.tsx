@@ -31,13 +31,19 @@ function chapterListItem(
   chapterNumber: number,
   status: string,
   latestGenerationTask: ChapterLatestGenerationTaskResponse | null = null,
+  targetWords: string[] = [],
 ): ChapterListItem {
   return {
     id: `${storyProjectId}-chapter-${chapterNumber}`,
     storyProjectId,
     chapterNumber,
     status,
-    targetWords: [],
+    targetWords: targetWords.map((word, position) => ({
+      word,
+      lemma: word,
+      source: "manual",
+      position,
+    })),
     hasOutput: status === "completed",
     latestGenerationTask,
   };
@@ -146,7 +152,7 @@ describe("useChapterFlow", () => {
   it("loads chapter list and allows selecting a chapter", async () => {
     const chapters = [
       chapterListItem("story-nav", 1, "completed"),
-      chapterListItem("story-nav", 2, "draft"),
+      chapterListItem("story-nav", 2, "completed"),
     ];
     const getChapter = vi.fn()
       .mockResolvedValueOnce(chapterResponse("story-nav", "Chapter one **word**.", ["word"], 1))
@@ -222,6 +228,36 @@ describe("useChapterFlow", () => {
     expect(result.current.isGenerating).toBe(true);
     expect(result.current.generationTaskId).toBe(runningTask.id);
     expect(getChapter).not.toHaveBeenCalledWith("story-select", 2);
+    expect(generateChapter).not.toHaveBeenCalled();
+  });
+
+  it("marks a selected draft chapter as pending instead of returning to word selection", async () => {
+    const chapters = [
+      chapterListItem("story-pending", 1, "completed"),
+      chapterListItem("story-pending", 2, "draft", null, ["past", "go", "test"]),
+    ];
+    const getChapter = vi.fn()
+      .mockResolvedValueOnce(chapterResponse("story-pending", "Chapter one **word**.", ["word"], 1));
+    const listChapters = vi.fn().mockResolvedValue(chapters);
+    const generateChapter = vi.fn();
+    const client = { getChapter, listChapters, generateChapter } as unknown as ApiClient;
+
+    const { result } = renderHook(() => useChapterFlow(client, "story-pending"));
+
+    await waitFor(() => {
+      expect(result.current.chapters).toHaveLength(2);
+    });
+
+    await act(async () => {
+      await result.current.selectChapter(2);
+    });
+
+    expect(result.current.chapterNumber).toBe(2);
+    expect(result.current.output).toBeNull();
+    expect(result.current.isPendingDraft).toBe(true);
+    expect(result.current.isGenerating).toBe(false);
+    expect(result.current.generationTaskId).toBeNull();
+    expect(getChapter).not.toHaveBeenCalledWith("story-pending", 2);
     expect(generateChapter).not.toHaveBeenCalled();
   });
 

@@ -6,6 +6,7 @@ export interface ChapterFlowState {
   chapters: ChapterListItem[];
   chapterNumber: number;
   targetWords: string[];
+  isPendingDraft: boolean;
   isGenerating: boolean;
   generationStatus: string | null;
   output: ChapterOutput | null;
@@ -17,6 +18,7 @@ function createChapterState(chapterNumber = 1, targetWords: string[] = []): Omit
   return {
     chapterNumber,
     targetWords,
+    isPendingDraft: false,
     isGenerating: false,
     generationStatus: null,
     output: null,
@@ -166,6 +168,7 @@ export function useChapterFlow(
       generationStatus: task.status,
       retryCount: task.retryCount,
       isGenerating: isPollingStatus(task.status),
+      isPendingDraft: false,
     }));
   }, []);
 
@@ -182,6 +185,7 @@ export function useChapterFlow(
       output: chapter.output,
       generationStatus: chapter.status,
       isGenerating: false,
+      isPendingDraft: false,
     }));
   }, [apiClient, storyProjectId, state.chapterNumber]);
 
@@ -214,12 +218,18 @@ export function useChapterFlow(
     const selectedChapter = findChapter(state.chapters, chapterNumber);
     const selectedTargetWords = targetWordsFromChapter(selectedChapter);
     const restoredTaskState = restoreTaskState(selectedChapter);
+    const isPendingDraft =
+      selectedChapter?.status === "draft" &&
+      !selectedChapter.hasOutput &&
+      !restoredTaskState.generationTaskId;
     setState((s) => ({
       ...s,
       ...createChapterState(chapterNumber, selectedTargetWords),
+      isPendingDraft,
       generationStatus: null,
       ...restoredTaskState,
     }));
+    if (isPendingDraft) return;
     if (restoredTaskState.generationTaskId) return;
 
     try {
@@ -231,6 +241,7 @@ export function useChapterFlow(
         generationStatus: chapter.status,
         output: chapter.output,
         isGenerating: false,
+        isPendingDraft: false,
         generationTaskId: null,
         retryCount: 0,
       }));
