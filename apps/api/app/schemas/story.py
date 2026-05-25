@@ -18,6 +18,18 @@ class CreateStoryProjectRequest(BaseModel):
         return values
 
 
+class RenameStoryProjectRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+
+    @validator("title")
+    @classmethod
+    def normalize_title(cls, title: str) -> str:
+        clean = title.strip()
+        if not clean:
+            raise ValueError("title cannot be blank")
+        return clean
+
+
 class StoryProjectResponse(BaseModel):
     id: UUID
     title: str

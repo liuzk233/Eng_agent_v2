@@ -8,10 +8,10 @@ from sqlalchemy.orm import Session
 from app.api.routes.auth import get_current_user
 from app.db.session import get_db
 from app.domain.story.repository import StoryProjectRepository
-from app.domain.story.service import StoryProjectService
+from app.domain.story.service import StoryProjectError, StoryProjectService
 from app.models.auth import User
 from app.models.story import StoryProject
-from app.schemas.story import CreateStoryProjectRequest, StoryProjectResponse
+from app.schemas.story import CreateStoryProjectRequest, RenameStoryProjectRequest, StoryProjectResponse
 
 router = APIRouter(prefix="/api/story-projects", tags=["story-projects"])
 
@@ -49,3 +49,16 @@ def get_story_project(
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Story project not found")
     return project
+
+
+@router.patch("/{story_project_id}", response_model=StoryProjectResponse)
+def rename_story_project(
+    story_project_id: UUID,
+    payload: RenameStoryProjectRequest,
+    current_user: User = Depends(get_current_user),
+    story_service: StoryProjectService = Depends(get_story_project_service),
+) -> StoryProject:
+    try:
+        return story_service.rename_story_project(current_user, story_project_id, payload)
+    except StoryProjectError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.message) from error

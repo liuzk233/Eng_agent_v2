@@ -75,6 +75,20 @@ class StoryProjectRepository:
             )
         )
 
+    def update_story_project_title_for_user(
+        self,
+        user: User,
+        story_project_id: UUID,
+        title: str,
+    ) -> StoryProject | None:
+        project = self.get_story_project_for_user(user, story_project_id)
+        if project is None:
+            return None
+
+        project.title = title
+        self.session.flush()
+        return project
+
 
 def _build_initial_main_plot(
     title: str,

@@ -139,6 +139,84 @@ def test_story_project_detail_is_scoped_to_current_user() -> None:
     assert other_detail.status_code == 404
 
 
+def test_rename_story_project_updates_title_for_owner() -> None:
+    client, testing_session = make_client()
+    token = register_user(client, testing_session, "renamer@example.com", "RENAME")
+    created = client.post(
+        "/api/story-projects",
+        headers=auth_headers(token),
+        json={"title": "Original title", "style": "science_fiction", "target_chapter_count": 2},
+    ).json()
+
+    response = client.patch(
+        f"/api/story-projects/{created['id']}",
+        headers=auth_headers(token),
+        json={"title": "  Custom study arc  "},
+    )
+
+    assert response.status_code == 200
+    renamed = response.json()
+    assert renamed["id"] == created["id"]
+    assert renamed["title"] == "Custom study arc"
+
+    detail = client.get(f"/api/story-projects/{created['id']}", headers=auth_headers(token))
+    assert detail.status_code == 200
+    assert detail.json()["title"] == "Custom study arc"
+
+    with testing_session() as session:
+        bible = session.query(StoryBible).one()
+        chapters = session.query(Chapter).order_by(Chapter.chapter_number).all()
+
+    assert "Original title" in bible.main_plot
+    assert "Custom study arc" not in bible.main_plot
+    assert [chapter.chapter_number for chapter in chapters] == [1, 2]
+
+
+def test_rename_story_project_rejects_blank_title() -> None:
+    client, testing_session = make_client()
+    token = register_user(client, testing_session, "blank-renamer@example.com", "BLANK-RENAME")
+    created = client.post(
+        "/api/story-projects",
+        headers=auth_headers(token),
+        json={"title": "Keep me", "style": "web_novel", "target_chapter_count": 1},
+    ).json()
+
+    response = client.patch(
+        f"/api/story-projects/{created['id']}",
+        headers=auth_headers(token),
+        json={"title": "   "},
+    )
+
+    assert response.status_code == 422
+
+    detail = client.get(f"/api/story-projects/{created['id']}", headers=auth_headers(token))
+    assert detail.status_code == 200
+    assert detail.json()["title"] == "Keep me"
+
+
+def test_rename_story_project_is_scoped_to_current_user() -> None:
+    client, testing_session = make_client()
+    owner_token = register_user(client, testing_session, "rename-owner@example.com", "RENAME-OWNER")
+    other_token = register_user(client, testing_session, "rename-other@example.com", "RENAME-OTHER")
+    created = client.post(
+        "/api/story-projects",
+        headers=auth_headers(owner_token),
+        json={"title": "Owner title", "style": "science_fiction", "target_chapter_count": 1},
+    ).json()
+
+    response = client.patch(
+        f"/api/story-projects/{created['id']}",
+        headers=auth_headers(other_token),
+        json={"title": "Stolen title"},
+    )
+
+    assert response.status_code == 404
+
+    detail = client.get(f"/api/story-projects/{created['id']}", headers=auth_headers(owner_token))
+    assert detail.status_code == 200
+    assert detail.json()["title"] == "Owner title"
+
+
 def test_chapter_listing_returns_all_chapter_statuses_for_owner() -> None:
     client, testing_session = make_client()
     token = register_user(client, testing_session, "chapter-list@example.com", "CHAPTER-LIST")
