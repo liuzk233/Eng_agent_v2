@@ -70,3 +70,4 @@ CLAUDE.md
 apps/web/package-lock.json
 .specs
 
+.codex/
