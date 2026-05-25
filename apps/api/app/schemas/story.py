@@ -19,7 +19,7 @@ class CreateStoryProjectRequest(BaseModel):
 
 
 class RenameStoryProjectRequest(BaseModel):
-    title: str = Field(min_length=1, max_length=160)
+    title: str
 
     @validator("title")
     @classmethod
@@ -27,6 +27,8 @@ class RenameStoryProjectRequest(BaseModel):
         clean = title.strip()
         if not clean:
             raise ValueError("title cannot be blank")
+        if len(clean) > 160:
+            raise ValueError("title cannot exceed 160 characters")
         return clean
 
 

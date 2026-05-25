@@ -194,6 +194,52 @@ def test_rename_story_project_rejects_blank_title() -> None:
     assert detail.json()["title"] == "Keep me"
 
 
+def test_rename_story_project_accepts_trimmed_title_at_max_length() -> None:
+    client, testing_session = make_client()
+    token = register_user(client, testing_session, "max-renamer@example.com", "MAX-RENAME")
+    created = client.post(
+        "/api/story-projects",
+        headers=auth_headers(token),
+        json={"title": "Boundary title", "style": "web_novel", "target_chapter_count": 1},
+    ).json()
+    title = "A" * 160
+
+    response = client.patch(
+        f"/api/story-projects/{created['id']}",
+        headers=auth_headers(token),
+        json={"title": f"  {title}  "},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["title"] == title
+
+    detail = client.get(f"/api/story-projects/{created['id']}", headers=auth_headers(token))
+    assert detail.status_code == 200
+    assert detail.json()["title"] == title
+
+
+def test_rename_story_project_rejects_trimmed_title_over_max_length() -> None:
+    client, testing_session = make_client()
+    token = register_user(client, testing_session, "over-max-renamer@example.com", "OVERMAX-RENAME")
+    created = client.post(
+        "/api/story-projects",
+        headers=auth_headers(token),
+        json={"title": "Keep boundary", "style": "web_novel", "target_chapter_count": 1},
+    ).json()
+
+    response = client.patch(
+        f"/api/story-projects/{created['id']}",
+        headers=auth_headers(token),
+        json={"title": f"  {'A' * 161}  "},
+    )
+
+    assert response.status_code == 422
+
+    detail = client.get(f"/api/story-projects/{created['id']}", headers=auth_headers(token))
+    assert detail.status_code == 200
+    assert detail.json()["title"] == "Keep boundary"
+
+
 def test_rename_story_project_is_scoped_to_current_user() -> None:
     client, testing_session = make_client()
     owner_token = register_user(client, testing_session, "rename-owner@example.com", "RENAME-OWNER")

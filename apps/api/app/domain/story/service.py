@@ -40,11 +40,7 @@ class StoryProjectService:
         story_project_id: UUID,
         payload: RenameStoryProjectRequest,
     ) -> StoryProject:
-        title = payload.title.strip()
-        if not title:
-            raise StoryProjectError("Title cannot be blank", 422)
-
-        project = self.repository.update_story_project_title_for_user(user, story_project_id, title)
+        project = self.repository.update_story_project_title_for_user(user, story_project_id, payload.title)
         if project is None:
             raise StoryProjectError("Story project not found", 404)
 
