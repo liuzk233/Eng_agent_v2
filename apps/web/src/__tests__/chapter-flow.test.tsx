@@ -36,6 +36,26 @@ const story: StoryProjectResponse = {
   updatedAt: "2026-05-20T00:00:00Z",
 };
 
+const STYLE_LABELS: Record<StoryProjectResponse["style"], string> = {
+  web_novel: "网络爽文",
+  science_fiction: "科幻小说",
+  exam_reading: "应试阅读",
+};
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function storySelectionName(currentStory: StoryProjectResponse): RegExp {
+  return new RegExp(
+    `^${escapeRegExp(currentStory.title)}\\s*${STYLE_LABELS[currentStory.style]}\\s*·\\s*${currentStory.targetChapterCount}\\s*章$`,
+  );
+}
+
+async function findStorySelectionButton(currentStory: StoryProjectResponse = story) {
+  return screen.findByRole("button", { name: storySelectionName(currentStory) });
+}
+
 function storyWithCurrentChapter(currentChapterNumber: number): StoryProjectResponse {
   return {
     ...story,
@@ -207,7 +227,7 @@ describe("Chapter Flow Integration", () => {
     mockStoryApp([chapterListItem(1), chapterListItem(2, "draft")]);
 
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: /Serial Story/ }));
+    fireEvent.click(await findStorySelectionButton());
     await screen.findByText("她展现了勇气。");
 
     expect(screen.queryByRole("button", { name: "生成下一章" })).not.toBeInTheDocument();
@@ -217,7 +237,7 @@ describe("Chapter Flow Integration", () => {
     mockStoryApp([chapterListItem(1)]);
 
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: /Serial Story/ }));
+    fireEvent.click(await findStorySelectionButton());
     await screen.findByText("她展现了勇气。");
 
     expect(screen.getByRole("button", { name: "生成下一章" })).toBeInTheDocument();
@@ -227,7 +247,7 @@ describe("Chapter Flow Integration", () => {
     mockStoryApp([chapterListItem(1)]);
 
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: /Serial Story/ }));
+    fireEvent.click(await findStorySelectionButton());
     await screen.findByText("她展现了勇气。");
 
     fireEvent.click(screen.getByRole("button", { name: "生成下一章" }));
@@ -245,7 +265,7 @@ describe("Chapter Flow Integration", () => {
     ]);
 
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: /Serial Story/ }));
+    fireEvent.click(await findStorySelectionButton());
     await screen.findByText("她展现了勇气。");
 
     fireEvent.click(screen.getByRole("button", { name: /第 2 章/ }));
@@ -269,7 +289,7 @@ describe("Chapter Flow Integration", () => {
     ]);
 
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: /Serial Story/ }));
+    fireEvent.click(await findStorySelectionButton(historyStory));
 
     await waitFor(() => {
       expect(screen.getByText("第 3 章 / 共 3 章")).toBeInTheDocument();
