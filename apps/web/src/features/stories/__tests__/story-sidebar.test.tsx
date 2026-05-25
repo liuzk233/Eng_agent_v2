@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { StorySidebar } from "../StorySidebar";
 import { NewStoryDialog } from "../NewStoryDialog";
 import type { StoryProject } from "../storyTypes";
@@ -90,6 +90,141 @@ describe("StorySidebar", () => {
     );
     fireEvent.click(screen.getByText("新建故事"));
     expect(onNew).toHaveBeenCalled();
+  });
+
+  it("opens the row operation menu and enters rename mode", () => {
+    render(
+      <StorySidebar
+        stories={mockStories}
+        selectedStoryId={null}
+        onSelectStory={vi.fn()}
+        onNewStory={vi.fn()}
+        onRenameStory={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开故事操作菜单：My First Story" }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "重命名" }));
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("重命名故事名称")).toHaveValue("My First Story");
+  });
+
+  it("confirms a valid inline rename", async () => {
+    const onRenameStory = vi.fn().mockResolvedValue(undefined);
+    render(
+      <StorySidebar
+        stories={mockStories}
+        selectedStoryId={null}
+        onSelectStory={vi.fn()}
+        onNewStory={vi.fn()}
+        onRenameStory={onRenameStory}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开故事操作菜单：My First Story" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "重命名" }));
+    fireEvent.change(screen.getByLabelText("重命名故事名称"), {
+      target: { value: "Renamed Story" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(onRenameStory).toHaveBeenCalledWith("1", "Renamed Story");
+    });
+    await waitFor(() => {
+      expect(screen.queryByLabelText("重命名故事名称")).not.toBeInTheDocument();
+    });
+  });
+
+  it("cancels inline rename without changing the story", () => {
+    const onRenameStory = vi.fn();
+    render(
+      <StorySidebar
+        stories={mockStories}
+        selectedStoryId={null}
+        onSelectStory={vi.fn()}
+        onNewStory={vi.fn()}
+        onRenameStory={onRenameStory}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开故事操作菜单：My First Story" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "重命名" }));
+    fireEvent.change(screen.getByLabelText("重命名故事名称"), {
+      target: { value: "Draft Title" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+
+    expect(screen.queryByLabelText("重命名故事名称")).not.toBeInTheDocument();
+    expect(screen.getByText("My First Story")).toBeInTheDocument();
+    expect(onRenameStory).not.toHaveBeenCalled();
+  });
+
+  it("shows an inline error for a blank rename and does not call the API", () => {
+    const onRenameStory = vi.fn();
+    render(
+      <StorySidebar
+        stories={mockStories}
+        selectedStoryId={null}
+        onSelectStory={vi.fn()}
+        onNewStory={vi.fn()}
+        onRenameStory={onRenameStory}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开故事操作菜单：My First Story" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "重命名" }));
+    fireEvent.change(screen.getByLabelText("重命名故事名称"), {
+      target: { value: "   " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("名称不能为空");
+    expect(screen.getByLabelText("重命名故事名称")).toHaveAttribute(
+      "aria-describedby",
+      "rename-story-error-1",
+    );
+    expect(onRenameStory).not.toHaveBeenCalled();
+  });
+
+  it("cancels inline rename with Escape", () => {
+    const onRenameStory = vi.fn();
+    render(
+      <StorySidebar
+        stories={mockStories}
+        selectedStoryId={null}
+        onSelectStory={vi.fn()}
+        onNewStory={vi.fn()}
+        onRenameStory={onRenameStory}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开故事操作菜单：My First Story" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "重命名" }));
+    fireEvent.keyDown(screen.getByLabelText("重命名故事名称"), { key: "Escape" });
+
+    expect(screen.queryByLabelText("重命名故事名称")).not.toBeInTheDocument();
+    expect(onRenameStory).not.toHaveBeenCalled();
+  });
+
+  it("keeps the operation trigger reachable by keyboard focus", () => {
+    render(
+      <StorySidebar
+        stories={mockStories}
+        selectedStoryId={null}
+        onSelectStory={vi.fn()}
+        onNewStory={vi.fn()}
+        onRenameStory={vi.fn()}
+      />,
+    );
+
+    const menuButton = screen.getByRole("button", { name: "打开故事操作菜单：My First Story" });
+    menuButton.focus();
+
+    expect(menuButton).toHaveFocus();
   });
 });
 

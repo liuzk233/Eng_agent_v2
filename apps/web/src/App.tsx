@@ -44,7 +44,7 @@ function MainApp() {
 }
 
 function StoryApp() {
-  const { stories, isLoading, createStory } = useStories(apiClient);
+  const { stories, isLoading, createStory, renameStory, isRenaming } = useStories(apiClient);
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [draftTargetWordsByStoryId, setDraftTargetWordsByStoryId] = useState<Record<string, string[]>>({});
@@ -108,6 +108,8 @@ function StoryApp() {
       selectedStoryId={selectedStoryId}
       onSelectStory={setSelectedStoryId}
       onNewStory={() => setDialogOpen(true)}
+      onRenameStory={renameStory}
+      isRenaming={isRenaming}
       onHome={() => setSelectedStoryId(null)}
     />
   );
