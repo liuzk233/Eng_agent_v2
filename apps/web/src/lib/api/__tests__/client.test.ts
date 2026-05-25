@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiClient, ApiError, createApiClient } from "../client";
-import type { CreateStoryProjectRequest, StoryProjectResponse } from "../types";
+import type { CreateStoryProjectRequest, RenameStoryProjectRequest, StoryProjectResponse } from "../types";
 import { queryClient } from "../../query/queryClient";
 
 const okProject: StoryProjectResponse = {
@@ -63,6 +63,49 @@ describe("ApiClient", () => {
           title: "Mars Station",
           style: "science_fiction",
           target_chapter_count: 6,
+        }),
+      }),
+    );
+  });
+
+  it("renames story projects with PATCH and parses the updated story response", async () => {
+    const updatedProjectApi = {
+      ...okProjectApi,
+      title: "Custom study arc",
+      updated_at: "2026-05-25T04:00:00.000Z",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(updatedProjectApi), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const client = createApiClient({
+      baseUrl: "https://api.example.test",
+      getAccessToken: () => "jwt-token",
+      fetcher: fetchMock,
+    });
+    const payload: RenameStoryProjectRequest = {
+      title: "Custom study arc",
+    };
+
+    const response = await client.renameStoryProject("story-1", payload);
+
+    expect(response).toEqual({
+      ...okProject,
+      title: "Custom study arc",
+      updatedAt: "2026-05-25T04:00:00.000Z",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.test/api/story-projects/story-1",
+      expect.objectContaining({
+        method: "PATCH",
+        headers: expect.objectContaining({
+          Authorization: "Bearer jwt-token",
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          title: "Custom study arc",
         }),
       }),
     );

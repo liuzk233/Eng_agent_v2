@@ -42,6 +42,10 @@ export interface CreateStoryProjectRequest {
   targetChapterCount: number;
 }
 
+export interface RenameStoryProjectRequest {
+  title: string;
+}
+
 export interface StoryProjectResponse {
   id: string;
   title: string;

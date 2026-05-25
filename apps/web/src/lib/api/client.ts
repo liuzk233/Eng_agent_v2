@@ -5,6 +5,7 @@ import type {
   CreateStoryProjectRequest,
   LoginRequest,
   RegisterRequest,
+  RenameStoryProjectRequest,
   StoryProjectResponse,
   TargetWordsSubmitRequest,
   TokenResponse,
@@ -157,6 +158,13 @@ export class ApiClient {
 
   createStoryProject(payload: CreateStoryProjectRequest): Promise<StoryProjectResponse> {
     return this.request<StoryProjectResponse>("/story-projects", { method: "POST", body: payload });
+  }
+
+  renameStoryProject(storyProjectId: string, payload: RenameStoryProjectRequest): Promise<StoryProjectResponse> {
+    return this.request<StoryProjectResponse>(`/story-projects/${storyProjectId}`, {
+      method: "PATCH",
+      body: payload,
+    });
   }
 
   listStoryProjects(): Promise<StoryProjectResponse[]> {
