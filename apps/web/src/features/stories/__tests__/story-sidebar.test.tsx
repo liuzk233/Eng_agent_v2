@@ -139,6 +139,69 @@ describe("StorySidebar", () => {
     });
   });
 
+  it("disables rename controls while saving", async () => {
+    let resolveRename!: () => void;
+    const onRenameStory = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRename = resolve;
+        }),
+    );
+    render(
+      <StorySidebar
+        stories={mockStories}
+        selectedStoryId={null}
+        onSelectStory={vi.fn()}
+        onNewStory={vi.fn()}
+        onRenameStory={onRenameStory}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开故事操作菜单：My First Story" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "重命名" }));
+    fireEvent.change(screen.getByLabelText("重命名故事名称"), {
+      target: { value: "Renamed Story" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "保存中" })).toBeDisabled();
+    });
+    expect(screen.getByLabelText("重命名故事名称")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
+
+    resolveRename();
+    await waitFor(() => {
+      expect(screen.queryByLabelText("重命名故事名称")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps editing open and shows a recoverable error when rename fails", async () => {
+    const onRenameStory = vi.fn().mockRejectedValue(new Error("network"));
+    render(
+      <StorySidebar
+        stories={mockStories}
+        selectedStoryId={null}
+        onSelectStory={vi.fn()}
+        onNewStory={vi.fn()}
+        onRenameStory={onRenameStory}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开故事操作菜单：My First Story" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "重命名" }));
+    fireEvent.change(screen.getByLabelText("重命名故事名称"), {
+      target: { value: "Renamed Story" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("重命名失败，请重试");
+    });
+    expect(screen.getByLabelText("重命名故事名称")).toHaveValue("Renamed Story");
+    expect(onRenameStory).toHaveBeenCalledWith("1", "Renamed Story");
+  });
+
   it("cancels inline rename without changing the story", () => {
     const onRenameStory = vi.fn();
     render(
