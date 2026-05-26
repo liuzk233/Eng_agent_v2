@@ -52,6 +52,7 @@ function chapterListItem(
 function generationTask(
   chapterId: string,
   status: ChapterLatestGenerationTaskResponse["status"] = "running",
+  fallbackReason: string | null = null,
 ): ChapterLatestGenerationTaskResponse {
   return {
     id: `${chapterId}-task`,
@@ -60,6 +61,7 @@ function generationTask(
     retryCount: 1,
     createdAt: "2026-05-18T00:00:00Z",
     updatedAt: "2026-05-18T00:01:00Z",
+    fallbackReason,
   };
 }
 
@@ -323,6 +325,52 @@ describe("useChapterFlow", () => {
     expect(getChapter).toHaveBeenCalledWith("story-finish", 2);
     expect(result.current.output?.englishContent).toBe("Chapter two **beta**.");
     expect(result.current.isGenerating).toBe(false);
+  });
+
+  it("restores failed_internal task state without fetching missing output", async () => {
+    const failedTask = generationTask("story-failed-chapter-1", "failed_internal", "401 invalid api key");
+    const chapters = [
+      chapterListItem("story-failed", 1, "failed_internal", failedTask, ["adventure"]),
+    ];
+    const getChapter = vi.fn().mockRejectedValue(new Error("not found"));
+    const listChapters = vi.fn().mockResolvedValue(chapters);
+    const client = { getChapter, listChapters } as unknown as ApiClient;
+
+    const { result } = renderHook(() =>
+      useChapterFlow(client, "story-failed", [], 1),
+    );
+
+    await waitFor(() => {
+      expect(result.current.generationStatus).toBe("failed_internal");
+    });
+
+    expect(result.current.output).toBeNull();
+    expect(result.current.isGenerating).toBe(false);
+    expect(result.current.generationTaskId).toBe(failedTask.id);
+    expect(result.current.generationFailureReason).toBe("401 invalid api key");
+    expect(getChapter).not.toHaveBeenCalled();
+  });
+
+  it("keeps failed status when completed task output is unavailable", async () => {
+    const chapters = [
+      chapterListItem("story-missing-output", 1, "fallback_completed", null, ["adventure"]),
+    ];
+    const getChapter = vi.fn().mockRejectedValue(new Error("not found"));
+    const listChapters = vi.fn().mockResolvedValue(chapters);
+    const client = { getChapter, listChapters } as unknown as ApiClient;
+
+    const { result } = renderHook(() =>
+      useChapterFlow(client, "story-missing-output", [], 1),
+    );
+
+    await act(async () => {
+      await result.current.loadCompletedChapter();
+    });
+
+    expect(result.current.output).toBeNull();
+    expect(result.current.isGenerating).toBe(false);
+    expect(result.current.generationStatus).toBe("failed_internal");
+    expect(result.current.generationFailureReason).toBe("章节正文不可用，请重试。");
   });
 
   it("does not reset output when clicking the already-active completed chapter", async () => {

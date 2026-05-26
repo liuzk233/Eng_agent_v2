@@ -128,6 +128,7 @@ function StoryApp() {
           status={chapterFlow.generationStatus as "queued" | "running" | "reviewing" | "retrying" | "completed" | "fallback_completed" | "failed_internal"}
           retryCount={chapterFlow.retryCount}
           isStale={generationTask.isStale}
+          failureReason={chapterFlow.generationFailureReason}
           onRetry={chapterFlow.retryGeneration}
         />
       )}
@@ -160,7 +161,7 @@ function StoryApp() {
         </>
       )}
 
-      {!chapterFlow.isGenerating && !chapterFlow.output && !chapterFlow.isPendingDraft && (
+      {!chapterFlow.isGenerating && !chapterFlow.output && !chapterFlow.isPendingDraft && chapterFlow.generationStatus !== "failed_internal" && (
         <TargetWordsInputDock
           words={chapterFlow.targetWords}
           onWordsChange={chapterFlow.setTargetWords}

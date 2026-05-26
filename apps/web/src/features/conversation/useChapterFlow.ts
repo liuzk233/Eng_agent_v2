@@ -12,6 +12,7 @@ export interface ChapterFlowState {
   output: ChapterOutput | null;
   retryCount: number;
   generationTaskId: string | null;
+  generationFailureReason: string | null;
 }
 
 function createChapterState(chapterNumber = 1, targetWords: string[] = []): Omit<ChapterFlowState, "chapters"> {
@@ -24,6 +25,7 @@ function createChapterState(chapterNumber = 1, targetWords: string[] = []): Omit
     output: null,
     retryCount: 0,
     generationTaskId: null,
+    generationFailureReason: null,
   };
 }
 
@@ -36,6 +38,10 @@ function loadChaptersForStory(
 
 function isPollingStatus(status: string): boolean {
   return ["queued", "running", "reviewing", "retrying"].includes(status);
+}
+
+function isFailedStatus(status: string): boolean {
+  return status === "failed_internal";
 }
 
 function findChapter(chapters: ChapterListItem[], chapterNumber: number): ChapterListItem | undefined {
@@ -57,12 +63,13 @@ function isPendingDraftChapter(
 
 function restoreTaskState(chapter: ChapterListItem | undefined): Partial<ChapterFlowState> {
   const task = chapter?.latestGenerationTask;
-  if (!task || !isPollingStatus(task.status)) return {};
+  if (!task || (!isPollingStatus(task.status) && !isFailedStatus(task.status))) return {};
   return {
     generationTaskId: task.id,
     generationStatus: task.status,
     retryCount: task.retryCount,
-    isGenerating: true,
+    isGenerating: isPollingStatus(task.status),
+    generationFailureReason: task.status === "failed_internal" ? task.fallbackReason ?? null : null,
   };
 }
 
@@ -103,6 +110,7 @@ export function useChapterFlow(
             : s.targetWords,
           isPendingDraft: false,
           output: null,
+          generationFailureReason: null,
           ...initialRestoredTaskState,
         }));
         return;
@@ -120,6 +128,7 @@ export function useChapterFlow(
           output: null,
           generationTaskId: null,
           retryCount: 0,
+          generationFailureReason: null,
         }));
         return;
       }
@@ -139,6 +148,7 @@ export function useChapterFlow(
               isGenerating: false,
               generationTaskId: null,
               retryCount: 0,
+              generationFailureReason: null,
             }
           : {
               chapterNumber: initialChapterNumber,
@@ -160,7 +170,7 @@ export function useChapterFlow(
 
   const submitWords = useCallback(async () => {
     if (!storyProjectId || state.targetWords.length === 0) return;
-    setState((s) => ({ ...s, isPendingDraft: false, isGenerating: true, generationStatus: "queued" }));
+    setState((s) => ({ ...s, isPendingDraft: false, isGenerating: true, generationStatus: "queued", generationFailureReason: null }));
     try {
       await apiClient.submitChapterTargetWords(storyProjectId, state.chapterNumber, {
         words: state.targetWords.map((w) => ({ word: w, source: "manual" })),
@@ -172,7 +182,7 @@ export function useChapterFlow(
 
   const startGeneration = useCallback(async () => {
     if (!storyProjectId) return;
-    setState((s) => ({ ...s, output: null, isPendingDraft: false, isGenerating: true, generationStatus: "running" }));
+    setState((s) => ({ ...s, output: null, isPendingDraft: false, isGenerating: true, generationStatus: "running", generationFailureReason: null }));
     try {
       const result = await apiClient.generateChapter(storyProjectId, state.chapterNumber);
       setState((s) => ({
@@ -181,9 +191,15 @@ export function useChapterFlow(
         generationStatus: result.status,
         retryCount: result.retryCount,
         isGenerating: true,
+        generationFailureReason: result.status === "failed_internal" ? result.fallbackReason ?? null : null,
       }));
-    } catch {
-      setState((s) => ({ ...s, isGenerating: false, generationStatus: "failed_internal" }));
+    } catch (error) {
+      setState((s) => ({
+        ...s,
+        isGenerating: false,
+        generationStatus: "failed_internal",
+        generationFailureReason: error instanceof Error ? error.message : "生成失败，请重试。",
+      }));
     }
   }, [apiClient, storyProjectId, state.chapterNumber]);
 
@@ -196,15 +212,28 @@ export function useChapterFlow(
       retryCount: task.retryCount,
       isGenerating: isPollingStatus(task.status),
       isPendingDraft: false,
+      generationFailureReason: task.status === "failed_internal" ? task.fallbackReason ?? null : null,
     }));
   }, []);
 
   const loadCompletedChapter = useCallback(async () => {
     if (!storyProjectId) return;
     const [chapter, chapters] = await Promise.all([
-      apiClient.getChapter(storyProjectId, state.chapterNumber),
+      apiClient.getChapter(storyProjectId, state.chapterNumber).catch(() => null),
       loadChaptersForStory(apiClient, storyProjectId),
     ]);
+    if (!chapter?.output?.englishContent || !chapter.output.chineseTranslation) {
+      setState((s) => ({
+        ...s,
+        chapters,
+        output: null,
+        generationStatus: "failed_internal",
+        isGenerating: false,
+        isPendingDraft: false,
+        generationFailureReason: s.generationFailureReason || "章节正文不可用，请重试。",
+      }));
+      return;
+    }
     setState((s) => ({
       ...s,
       chapters,
@@ -213,6 +242,7 @@ export function useChapterFlow(
       generationStatus: chapter.status,
       isGenerating: false,
       isPendingDraft: false,
+      generationFailureReason: null,
     }));
   }, [apiClient, storyProjectId, state.chapterNumber]);
 
@@ -222,7 +252,7 @@ export function useChapterFlow(
 
   const retryGeneration = useCallback(async () => {
     if (!storyProjectId) return;
-    setState((s) => ({ ...s, isGenerating: true, generationStatus: "running" }));
+    setState((s) => ({ ...s, isGenerating: true, generationStatus: "running", generationFailureReason: null }));
     try {
       const result = await apiClient.generateChapter(storyProjectId, state.chapterNumber);
       setState((s) => ({
@@ -231,9 +261,15 @@ export function useChapterFlow(
         generationStatus: result.status,
         retryCount: result.retryCount,
         isGenerating: true,
+        generationFailureReason: result.status === "failed_internal" ? result.fallbackReason ?? null : null,
       }));
-    } catch {
-      setState((s) => ({ ...s, isGenerating: false, generationStatus: "failed_internal" }));
+    } catch (error) {
+      setState((s) => ({
+        ...s,
+        isGenerating: false,
+        generationStatus: "failed_internal",
+        generationFailureReason: error instanceof Error ? error.message : "生成失败，请重试。",
+      }));
     }
   }, [apiClient, storyProjectId, state.chapterNumber]);
 
@@ -268,6 +304,7 @@ export function useChapterFlow(
         isPendingDraft: false,
         generationTaskId: null,
         retryCount: 0,
+        generationFailureReason: null,
       }));
     } catch {
       // Draft or in-progress chapters can return 404 before output exists.

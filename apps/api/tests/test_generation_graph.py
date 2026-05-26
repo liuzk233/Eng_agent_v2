@@ -75,6 +75,20 @@ class StaticLLMProvider(LLMProvider):
         )
 
 
+class AlwaysFailingLLMProvider(LLMProvider):
+    def __init__(self, message: str = "401 invalid api key") -> None:
+        self.message = message
+        self.attempts = 0
+
+    def generate_chapter(
+        self,
+        input_data: ChapterGenerationInput,
+        retry_config: RetryConfig | None = None,
+    ) -> tuple[ChapterGenerationOutput, UsageRecord]:
+        self.attempts += 1
+        raise RuntimeError(self.message)
+
+
 class FailingThenStaticLLMProvider(StaticLLMProvider):
     def __init__(self, english_content: str, *, fail_times: int) -> None:
         super().__init__(english_content)
@@ -251,6 +265,38 @@ class TestGenerationGraphEndToEnd:
         assert result.retry_count == 1
         assert result.final_status == GenerationStatus.completed
         assert provider.attempts == 2
+
+    def test_technical_generation_failure_exhausts_retries_as_failed_internal(self):
+        provider = AlwaysFailingLLMProvider("401 invalid api key")
+        state = make_state(
+            target_words=["adventure"],
+            syllabus_lemmas=compliant_syllabus_lemmas(),
+            max_retries=2,
+        )
+        result = run_generation(state, provider)
+
+        assert result.final_status == GenerationStatus.failed_internal
+        assert result.draft_output is None
+        assert result.retry_count == 2
+        assert result.review_feedback == "401 invalid api key"
+        assert provider.attempts == 3
+
+    def test_fallback_completed_requires_existing_draft_output(self):
+        provider = JudgingStaticLLMProvider(
+            compliant_english_content("adventure").replace("with a friend", "with lint"),
+            judgement_fail_times=1,
+        )
+        state = make_state(
+            target_words=["adventure"],
+            syllabus_lemmas=compliant_syllabus_lemmas(),
+            max_out_of_syllabus_rate=0.001,
+            max_retries=0,
+        )
+        result = run_generation(state, provider)
+
+        assert result.final_status == GenerationStatus.fallback_completed
+        assert result.draft_output is not None
+        assert result.review_feedback == "temporary judgement failure"
 
     def test_true_background_words_keep_chinese_translation_after_judgement(self):
         provider = JudgingStaticLLMProvider(

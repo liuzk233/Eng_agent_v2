@@ -142,9 +142,11 @@ class GenerationRepository:
         task.status = state.final_status
         task.retry_count = state.retry_count
         task.completed_at = now
-        task.fallback_reason = (
-            state.review_feedback if state.final_status == GenerationStatus.fallback_completed else None
-        )
+        if state.final_status in (GenerationStatus.fallback_completed, GenerationStatus.failed_internal):
+            reason = state.review_feedback or state.technical_error or None
+            task.fallback_reason = reason[:500] if reason else None
+        else:
+            task.fallback_reason = None
 
         chapter = task.chapter
         chapter.status = state.final_status

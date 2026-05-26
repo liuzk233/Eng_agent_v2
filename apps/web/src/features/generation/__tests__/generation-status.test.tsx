@@ -56,8 +56,9 @@ describe("GenerationStatusIndicator", () => {
 
   it("shows '生成异常' and retry button for failed_internal status", () => {
     const onRetry = vi.fn();
-    render(<GenerationStatusIndicator status="failed_internal" onRetry={onRetry} />);
+    render(<GenerationStatusIndicator status="failed_internal" failureReason="401 invalid api key" onRetry={onRetry} />);
     expect(screen.getByText("生成异常")).toBeInTheDocument();
+    expect(screen.getByText("401 invalid api key")).toBeInTheDocument();
     expect(screen.getByText("重试")).toBeInTheDocument();
   });
 

@@ -225,9 +225,16 @@ def accept_node(state: GenerationState) -> dict:
 
 
 def fallback_node(state: GenerationState) -> dict:
+    feedback = state.review_feedback or state.technical_error or "超过重试上限，生成失败"
+    if state.draft_output is None:
+        return {
+            "final_status": GenerationStatus.failed_internal,
+            "review_feedback": feedback,
+        }
+
     return {
         "final_status": GenerationStatus.fallback_completed,
-        "review_feedback": state.review_feedback or "超过重试上限，降级输出",
+        "review_feedback": feedback,
     }
 
 

@@ -4,6 +4,7 @@ interface GenerationStatusIndicatorProps {
   status: GenerationStatus;
   retryCount?: number;
   isStale?: boolean;
+  failureReason?: string | null;
   onRetry?: () => void;
 }
 
@@ -23,6 +24,7 @@ export function GenerationStatusIndicator({
   status,
   retryCount = 0,
   isStale = false,
+  failureReason = null,
   onRetry,
 }: GenerationStatusIndicatorProps) {
   const isStalePolling = isStale && POLLING_STATUSES.includes(status);
@@ -49,6 +51,11 @@ export function GenerationStatusIndicator({
     <div className="gen-status-indicator" role="status" aria-live="polite">
       <span className={`gen-status-dot ${config.className}`} />
       <span className="gen-status-label text-label">{config.label}</span>
+      {isFailed && (
+        <span className="gen-status-retry text-supporting">
+          {failureReason?.trim() || "生成失败，请重试。"}
+        </span>
+      )}
       {showRetryCount && (
         <span className="gen-status-retry text-micro-label">
           （第 {retryCount} 次重试）

@@ -331,6 +331,55 @@ def test_completed_generation_writes_chapter_state_summary(monkeypatch) -> None:
     assert chapter_state.summary == english_text[:200]
 
 
+def test_failed_internal_generation_persists_reason_without_chapter_output(monkeypatch) -> None:
+    client, testing_session = make_client()
+    token = register_user(client, testing_session, "failed-output@example.com", "FAILEDOUT")
+    story = create_story(client, token)
+    submit_words(client, token, story["id"])
+    monkeypatch.setattr(GenerationService, "enqueue", lambda self, state: "celery-task-id")
+
+    task_body = client.post(
+        f"/api/story-projects/{story['id']}/chapters/1/generate",
+        headers=auth_headers(token),
+    ).json()
+
+    with testing_session() as session:
+        task = session.get(GenerationTask, UUID(task_body["id"]))
+        state = GenerationState(
+            generation_task_id=str(task.id),
+            project_id=story["id"],
+            chapter_id=str(task.chapter_id),
+            final_status=GenerationStatus.failed_internal,
+            retry_count=3,
+            draft_output=None,
+            review_feedback="401 invalid api key",
+        )
+        repository = GenerationRepository(session)
+        repository.complete_generation_task(state)
+        session.commit()
+
+    response = client.get(
+        f"/api/story-projects/{story['id']}/chapters/1",
+        headers=auth_headers(token),
+    )
+    list_response = client.get(
+        f"/api/story-projects/{story['id']}/chapters",
+        headers=auth_headers(token),
+    )
+    task_response = client.get(
+        f"/api/generation-tasks/{task_body['id']}",
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 404
+    assert list_response.status_code == 200
+    first_chapter = list_response.json()[0]
+    assert first_chapter["status"] == "failed_internal"
+    assert first_chapter["has_output"] is False
+    assert first_chapter["latest_generation_task"]["fallback_reason"] == "401 invalid api key"
+    assert task_response.json()["fallback_reason"] == "401 invalid api key"
+
+
 def test_mark_generation_task_failed_sets_status_and_error(monkeypatch) -> None:
     client, testing_session = make_client()
     token = register_user(client, testing_session, "fail-task@example.com", "FAIL")
