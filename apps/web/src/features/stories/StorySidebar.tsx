@@ -14,6 +14,8 @@ interface StorySidebarProps {
   onNewStory: () => void;
   onRenameStory?: (id: string, title: string) => Promise<unknown>;
   isRenaming?: boolean;
+  onDeleteStory?: (id: string) => Promise<unknown>;
+  isDeleting?: boolean;
   onHome?: () => void;
 }
 
@@ -24,15 +26,22 @@ export function StorySidebar({
   onNewStory,
   onRenameStory = async () => undefined,
   isRenaming = false,
+  onDeleteStory = async () => undefined,
+  isDeleting = false,
   onHome = () => {},
 }: StorySidebarProps) {
   const sidebarRef = useRef<HTMLElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const deleteCancelButtonRef = useRef<HTMLButtonElement | null>(null);
   const [openMenuStoryId, setOpenMenuStoryId] = useState<string | null>(null);
   const [editingStoryId, setEditingStoryId] = useState<string | null>(null);
+  const [deleteDialogStory, setDeleteDialogStory] = useState<StoryProject | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [renameError, setRenameError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const [savingStoryId, setSavingStoryId] = useState<string | null>(null);
+  const [deletingStoryId, setDeletingStoryId] = useState<string | null>(null);
+  const isDeletePending = Boolean(deletingStoryId) || isDeleting;
 
   useEffect(() => {
     if (editingStoryId) {
@@ -58,6 +67,24 @@ export function StorySidebar({
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [openMenuStoryId]);
 
+  useEffect(() => {
+    if (!deleteDialogStory) return;
+    deleteCancelButtonRef.current?.focus();
+  }, [deleteDialogStory]);
+
+  useEffect(() => {
+    if (!deleteDialogStory) return;
+
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key !== "Escape" || isDeletePending) return;
+      event.preventDefault();
+      closeDeleteDialog();
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [deleteDialogStory, isDeletePending]);
+
   function startRename(story: StoryProject) {
     setOpenMenuStoryId(null);
     setEditingStoryId(story.id);
@@ -70,6 +97,33 @@ export function StorySidebar({
     setEditingStoryId(null);
     setDraftTitle("");
     setRenameError("");
+  }
+
+  function startDelete(story: StoryProject) {
+    setOpenMenuStoryId(null);
+    setDeleteDialogStory(story);
+    setDeleteError("");
+  }
+
+  function closeDeleteDialog() {
+    if (isDeletePending) return;
+    setDeleteDialogStory(null);
+    setDeleteError("");
+  }
+
+  async function confirmDelete() {
+    if (!deleteDialogStory || isDeletePending) return;
+
+    setDeleteError("");
+    setDeletingStoryId(deleteDialogStory.id);
+    try {
+      await onDeleteStory(deleteDialogStory.id);
+      setDeleteDialogStory(null);
+    } catch {
+      setDeleteError("删除失败，请重试");
+    } finally {
+      setDeletingStoryId(null);
+    }
   }
 
   async function handleRenameSubmit(story: StoryProject, event?: FormEvent) {
@@ -234,6 +288,14 @@ export function StorySidebar({
                             >
                               重命名
                             </button>
+                            <button
+                              type="button"
+                              className="story-row-menu-item story-row-menu-item--danger"
+                              role="menuitem"
+                              onClick={() => startDelete(story)}
+                            >
+                              删除
+                            </button>
                           </div>
                         )}
                       </div>
@@ -244,6 +306,53 @@ export function StorySidebar({
             })}
           </ul>
         </section>
+      )}
+      {deleteDialogStory && (
+        <div
+          className="dialog-overlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeDeleteDialog();
+            }
+          }}
+        >
+          <div
+            className="dialog-content story-delete-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-story-title"
+            aria-describedby="delete-story-description"
+          >
+            <h2 id="delete-story-title" className="text-subtitle">删除故事</h2>
+            <p id="delete-story-description" className="text-body">
+              确定删除「<span>{deleteDialogStory.title}</span>」吗？
+            </p>
+            {deleteError && (
+              <p className="story-delete-error" role="alert">
+                {deleteError}
+              </p>
+            )}
+            <div className="dialog-actions">
+              <button
+                ref={deleteCancelButtonRef}
+                type="button"
+                className="dialog-cancel-btn"
+                onClick={closeDeleteDialog}
+                disabled={isDeletePending}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="story-delete-confirm-btn"
+                onClick={() => void confirmDelete()}
+                disabled={isDeletePending}
+              >
+                {isDeletePending ? "删除中" : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </aside>
   );

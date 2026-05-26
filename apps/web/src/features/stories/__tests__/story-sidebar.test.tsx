@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { StorySidebar } from "../StorySidebar";
 import { NewStoryDialog } from "../NewStoryDialog";
 import type { StoryProject } from "../storyTypes";
@@ -110,6 +110,131 @@ describe("StorySidebar", () => {
 
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     expect(screen.getByLabelText("重命名故事名称")).toHaveValue("My First Story");
+  });
+
+  it("shows a destructive delete action and opens a confirmation dialog with the story title", () => {
+    render(
+      <StorySidebar
+        stories={mockStories}
+        selectedStoryId={null}
+        onSelectStory={vi.fn()}
+        onNewStory={vi.fn()}
+        onRenameStory={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开故事操作菜单：My First Story" }));
+    const menu = screen.getByRole("menu");
+    const deleteItem = within(menu).getByRole("menuitem", { name: "删除" });
+
+    expect(deleteItem).toHaveClass("story-row-menu-item--danger");
+    fireEvent.click(deleteItem);
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "删除故事" });
+    expect(within(dialog).getByText(/My First Story/)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "取消" })).toHaveFocus();
+    expect(within(dialog).getByRole("button", { name: "确认删除" })).toBeInTheDocument();
+  });
+
+  it("cancels delete confirmation without calling the delete callback", () => {
+    const onDeleteStory = vi.fn();
+    render(
+      <StorySidebar
+        stories={mockStories}
+        selectedStoryId="1"
+        onSelectStory={vi.fn()}
+        onNewStory={vi.fn()}
+        onDeleteStory={onDeleteStory}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开故事操作菜单：My First Story" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除" }));
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+
+    expect(screen.queryByRole("dialog", { name: "删除故事" })).not.toBeInTheDocument();
+    expect(screen.getByText("My First Story")).toBeInTheDocument();
+    expect(onDeleteStory).not.toHaveBeenCalled();
+  });
+
+  it("closes delete confirmation with Escape without calling the delete callback", () => {
+    const onDeleteStory = vi.fn();
+    render(
+      <StorySidebar
+        stories={mockStories}
+        selectedStoryId="1"
+        onSelectStory={vi.fn()}
+        onNewStory={vi.fn()}
+        onDeleteStory={onDeleteStory}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开故事操作菜单：My First Story" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog", { name: "删除故事" })).not.toBeInTheDocument();
+    expect(onDeleteStory).not.toHaveBeenCalled();
+  });
+
+  it("calls delete callback from confirmation and disables actions while deleting", async () => {
+    let resolveDelete!: () => void;
+    const onDeleteStory = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDelete = resolve;
+        }),
+    );
+    render(
+      <StorySidebar
+        stories={mockStories}
+        selectedStoryId="1"
+        onSelectStory={vi.fn()}
+        onNewStory={vi.fn()}
+        onDeleteStory={onDeleteStory}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开故事操作菜单：My First Story" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => {
+      expect(onDeleteStory).toHaveBeenCalledWith("1");
+    });
+    expect(screen.getByRole("button", { name: "删除中" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
+
+    resolveDelete();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "删除故事" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps delete confirmation open and shows a recoverable error when delete fails", async () => {
+    const onDeleteStory = vi.fn().mockRejectedValue(new Error("network"));
+    render(
+      <StorySidebar
+        stories={mockStories}
+        selectedStoryId="1"
+        onSelectStory={vi.fn()}
+        onNewStory={vi.fn()}
+        onDeleteStory={onDeleteStory}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开故事操作菜单：My First Story" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("删除失败，请重试");
+    });
+    const dialog = screen.getByRole("dialog", { name: "删除故事" });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText(/My First Story/)).toBeInTheDocument();
+    expect(onDeleteStory).toHaveBeenCalledWith("1");
   });
 
   it("confirms a valid inline rename", async () => {

@@ -371,6 +371,15 @@ select:disabled {
   background: var(--color-brand-veil);
 }
 
+.story-row-menu-item--danger {
+  color: var(--color-danger);
+}
+
+.story-row-menu-item--danger:hover,
+.story-row-menu-item--danger:focus-visible {
+  background: color-mix(in oklch, var(--color-danger) 12%, var(--color-surface));
+}
+
 .story-rename-form {
   display: grid;
   gap: 6px;
@@ -853,6 +862,55 @@ select:disabled {
 
 .dialog-content h2 {
   margin: 0 0 var(--space-md);
+}
+
+.story-delete-dialog {
+  width: min(100%, 420px);
+}
+
+.story-delete-dialog p {
+  margin: 0;
+}
+
+.story-delete-dialog .dialog-actions {
+  margin-top: var(--space-md);
+}
+
+.story-delete-confirm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  background: var(--color-danger);
+  color: var(--color-bg);
+  font-family: var(--font-label);
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+  letter-spacing: var(--text-label-tracking);
+  line-height: 1.2;
+  padding: 0 var(--space-sm);
+  white-space: nowrap;
+  transition:
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    border-color var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-base) var(--motion-ease-out);
+}
+
+.story-delete-confirm-btn:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--color-danger) 78%, var(--color-text-primary));
+  background: color-mix(in oklch, var(--color-danger) 84%, var(--color-text-primary));
+  transform: translateY(-1px);
+}
+
+.story-delete-error {
+  margin-top: var(--space-sm);
+  color: var(--color-danger);
+  font-family: var(--font-label);
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+  line-height: 1.3;
 }
 
 .dialog-content fieldset {
