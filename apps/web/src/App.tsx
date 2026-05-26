@@ -43,7 +43,7 @@ function MainApp() {
 }
 
 function StoryApp() {
-  const { stories, isLoading, createStory, renameStory, isRenaming } = useStories(apiClient);
+  const { stories, isLoading, createStory, renameStory, isRenaming, deleteStory, isDeleting } = useStories(apiClient);
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -85,6 +85,16 @@ function StoryApp() {
     [createStory],
   );
 
+  const handleDeleteStory = useCallback(
+    async (storyProjectId: string) => {
+      await deleteStory(storyProjectId);
+      if (selectedStoryId === storyProjectId) {
+        setSelectedStoryId(null);
+      }
+    },
+    [deleteStory, selectedStoryId],
+  );
+
   const sidebar = (
     <StorySidebar
       stories={stories.map((s) => ({
@@ -101,6 +111,8 @@ function StoryApp() {
       onNewStory={() => setDialogOpen(true)}
       onRenameStory={renameStory}
       isRenaming={isRenaming}
+      onDeleteStory={handleDeleteStory}
+      isDeleting={isDeleting}
       onHome={() => setSelectedStoryId(null)}
     />
   );

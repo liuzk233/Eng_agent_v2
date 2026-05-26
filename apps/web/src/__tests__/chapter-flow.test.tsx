@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "../App";
 import { AuthProvider } from "../features/auth/AuthProvider";
 import { StorySidebar } from "../features/stories/StorySidebar";
@@ -36,6 +36,16 @@ const story: StoryProjectResponse = {
   updatedAt: "2026-05-20T00:00:00Z",
 };
 
+const otherStory: StoryProjectResponse = {
+  id: "story-2",
+  title: "Side Quest",
+  style: "science_fiction",
+  targetChapterCount: 2,
+  currentChapterNumber: 1,
+  createdAt: "2026-05-21T00:00:00Z",
+  updatedAt: "2026-05-21T00:00:00Z",
+};
+
 const STYLE_LABELS: Record<StoryProjectResponse["style"], string> = {
   web_novel: "网络爽文",
   science_fiction: "科幻小说",
@@ -54,6 +64,14 @@ function storySelectionName(currentStory: StoryProjectResponse): RegExp {
 
 async function findStorySelectionButton(currentStory: StoryProjectResponse = story) {
   return screen.findByRole("button", { name: storySelectionName(currentStory) });
+}
+
+async function openStoryMenu(currentStory: StoryProjectResponse) {
+  const menuButton = await screen.findByRole("button", {
+    name: `打开故事操作菜单：${currentStory.title}`,
+  });
+  fireEvent.click(menuButton);
+  return screen.getByRole("menu");
 }
 
 function storyWithCurrentChapter(currentChapterNumber: number): StoryProjectResponse {
@@ -449,5 +467,75 @@ describe("Chapter Flow Integration", () => {
     });
     expect(screen.getByLabelText("目标词")).toBeInTheDocument();
     expect(submitChapterTargetWords).not.toHaveBeenCalled();
+  });
+
+  it("returns to the default empty state after deleting the currently selected story", async () => {
+    sessionStorage.setItem("vsl_token", "test-token");
+    vi.spyOn(apiClient, "listStoryProjects")
+      .mockResolvedValueOnce([story, otherStory])
+      .mockResolvedValue([otherStory]);
+    vi.spyOn(apiClient, "listChapters").mockResolvedValue([chapterListItem(1)]);
+    vi.spyOn(apiClient, "getChapter").mockResolvedValue({
+      id: "chapter-1",
+      storyProjectId: story.id,
+      chapterNumber: 1,
+      status: "completed",
+      output: {
+        englishContent: "She showed great **courage**.",
+        highlightedTargetWords: ["courage"],
+        chineseTranslation: "她展现了勇气。",
+      },
+    });
+    const deleteStoryProject = vi.spyOn(apiClient, "deleteStoryProject").mockResolvedValue(undefined);
+
+    render(<App />);
+    fireEvent.click(await findStorySelectionButton(story));
+    await screen.findByText("她展现了勇气。");
+
+    const menu = await openStoryMenu(story);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "删除" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => {
+      expect(deleteStoryProject).toHaveBeenCalledWith(story.id);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("选择一个故事，或新建故事开始按章节记忆单词。")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("她展现了勇气。")).not.toBeInTheDocument();
+  });
+
+  it("keeps the current reading content after deleting a different story", async () => {
+    sessionStorage.setItem("vsl_token", "test-token");
+    vi.spyOn(apiClient, "listStoryProjects")
+      .mockResolvedValueOnce([story, otherStory])
+      .mockResolvedValue([story]);
+    vi.spyOn(apiClient, "listChapters").mockResolvedValue([chapterListItem(1)]);
+    vi.spyOn(apiClient, "getChapter").mockResolvedValue({
+      id: "chapter-1",
+      storyProjectId: story.id,
+      chapterNumber: 1,
+      status: "completed",
+      output: {
+        englishContent: "She showed great **courage**.",
+        highlightedTargetWords: ["courage"],
+        chineseTranslation: "她展现了勇气。",
+      },
+    });
+    const deleteStoryProject = vi.spyOn(apiClient, "deleteStoryProject").mockResolvedValue(undefined);
+
+    render(<App />);
+    fireEvent.click(await findStorySelectionButton(story));
+    await screen.findByText("她展现了勇气。");
+
+    const menu = await openStoryMenu(otherStory);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "删除" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => {
+      expect(deleteStoryProject).toHaveBeenCalledWith(otherStory.id);
+    });
+    expect(screen.getByText("她展现了勇气。")).toBeInTheDocument();
+    expect(screen.getByText("第 1 章 / 共 3 章")).toBeInTheDocument();
   });
 });
