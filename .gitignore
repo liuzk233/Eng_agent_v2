@@ -57,13 +57,6 @@ apps/web/*preview*.png
 *.db
 STATE.md
 
-# Flow-kit specs: keep current change work products visible without surfacing archives.
-/.specs/*
-!/.specs/*/
-!/.specs/*/*.md
-/.specs/archive/
-/.specs/adr/
-
 flow-kit
 AGENTS.md
 CLAUDE.md
