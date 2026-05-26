@@ -114,7 +114,7 @@ export function useChapterFlow(
           chapters,
           chapterNumber: initialChapterNumber,
           targetWords: initialTargetWords,
-          isPendingDraft: true,
+          isPendingDraft: false,
           isGenerating: false,
           generationStatus: null,
           output: null,
@@ -160,7 +160,7 @@ export function useChapterFlow(
 
   const submitWords = useCallback(async () => {
     if (!storyProjectId || state.targetWords.length === 0) return;
-    setState((s) => ({ ...s, isGenerating: true, generationStatus: "queued" }));
+    setState((s) => ({ ...s, isPendingDraft: false, isGenerating: true, generationStatus: "queued" }));
     try {
       await apiClient.submitChapterTargetWords(storyProjectId, state.chapterNumber, {
         words: state.targetWords.map((w) => ({ word: w, source: "manual" })),
@@ -172,7 +172,7 @@ export function useChapterFlow(
 
   const startGeneration = useCallback(async () => {
     if (!storyProjectId) return;
-    setState((s) => ({ ...s, output: null, isGenerating: true, generationStatus: "running" }));
+    setState((s) => ({ ...s, output: null, isPendingDraft: false, isGenerating: true, generationStatus: "running" }));
     try {
       const result = await apiClient.generateChapter(storyProjectId, state.chapterNumber);
       setState((s) => ({
@@ -245,15 +245,15 @@ export function useChapterFlow(
     const selectedChapter = findChapter(state.chapters, chapterNumber);
     const selectedTargetWords = targetWordsFromChapter(selectedChapter);
     const restoredTaskState = restoreTaskState(selectedChapter);
-    const isPendingDraft = isPendingDraftChapter(selectedChapter, restoredTaskState);
+    const shouldSkipOutputFetch = isPendingDraftChapter(selectedChapter, restoredTaskState);
     setState((s) => ({
       ...s,
       ...createChapterState(chapterNumber, selectedTargetWords),
-      isPendingDraft,
+      isPendingDraft: false,
       generationStatus: null,
       ...restoredTaskState,
     }));
-    if (isPendingDraft) return;
+    if (shouldSkipOutputFetch) return;
     if (restoredTaskState.generationTaskId) return;
 
     try {

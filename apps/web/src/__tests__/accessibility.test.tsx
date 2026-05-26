@@ -58,9 +58,9 @@ describe("Accessibility", () => {
     expect(screen.getByRole("status")).toBeInTheDocument();
   });
 
-  it("new story dialog has target words label and style legend", () => {
+  it("new story dialog has style legend", () => {
     render(<NewStoryDialog open={true} onClose={vi.fn()} onSubmit={vi.fn()} />);
-    expect(screen.getByLabelText("目标单词")).toBeInTheDocument();
+    expect(screen.queryByLabelText("目标单词")).not.toBeInTheDocument();
     expect(screen.getByText("故事风格")).toBeInTheDocument();
   });
 

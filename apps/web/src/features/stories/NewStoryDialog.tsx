@@ -6,8 +6,6 @@ import {
   type NewStoryInput,
 } from "./storyTypes";
 
-const MAX_TARGET_WORDS = 10;
-
 interface NewStoryDialogProps {
   open: boolean;
   onClose: () => void;
@@ -15,18 +13,15 @@ interface NewStoryDialogProps {
 }
 
 export function NewStoryDialog({ open, onClose, onSubmit }: NewStoryDialogProps) {
-  const [targetWordsText, setTargetWordsText] = useState("");
   const [style, setStyle] = useState<StoryStyle>("web_novel");
   const [chapterCount, setChapterCount] = useState(5);
 
   const isExamReading = style === "exam_reading";
   const effectiveChapterCount = isExamReading ? EXAM_READING_CHAPTER_COUNT : chapterCount;
-  const targetWords = parseTargetWords(targetWordsText);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    onSubmit({ targetWords, style, targetChapterCount: effectiveChapterCount });
-    setTargetWordsText("");
+    onSubmit({ style, targetChapterCount: effectiveChapterCount });
     setStyle("web_novel");
     setChapterCount(5);
   }
@@ -75,42 +70,15 @@ export function NewStoryDialog({ open, onClose, onSubmit }: NewStoryDialogProps)
           )}
         </div>
 
-        <div className="auth-field">
-          <label htmlFor="new-story-target-words">目标单词</label>
-          <input
-            id="new-story-target-words"
-            type="text"
-            value={targetWordsText}
-            onChange={(e) => setTargetWordsText(e.target.value)}
-            required
-            placeholder="输入第一章要练习的单词，用逗号或空格分隔"
-          />
-        </div>
-
         <div className="dialog-actions">
           <button type="button" className="dialog-cancel-btn" onClick={onClose}>
             取消
           </button>
-          <button type="submit" className="auth-submit" disabled={targetWords.length === 0}>
+          <button type="submit" className="auth-submit">
             创建故事
           </button>
         </div>
       </form>
     </div>
   );
-}
-
-function parseTargetWords(raw: string): string[] {
-  const words = raw
-    .split(/[,，\s\n]+/)
-    .map((word) => word.trim().toLowerCase())
-    .filter(Boolean);
-
-  const uniqueWords: string[] = [];
-  for (const word of words) {
-    if (uniqueWords.includes(word)) continue;
-    if (uniqueWords.length >= MAX_TARGET_WORDS) break;
-    uniqueWords.push(word);
-  }
-  return uniqueWords;
 }

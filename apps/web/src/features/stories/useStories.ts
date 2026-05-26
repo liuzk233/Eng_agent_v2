@@ -18,7 +18,16 @@ export function useStories(apiClient: ApiClient) {
   const createMutation = useMutation({
     mutationFn: (payload: CreateStoryProjectRequest) =>
       apiClient.createStoryProject(payload),
-    onSuccess: () => {
+    onSuccess: (createdStory) => {
+      queryClient.setQueryData<StoryProjectResponse[]>(["storyProjects"], (current) => {
+        if (!current) {
+          return [createdStory];
+        }
+        if (current.some((story) => story.id === createdStory.id)) {
+          return current;
+        }
+        return [createdStory, ...current];
+      });
       queryClient.invalidateQueries({ queryKey: ["storyProjects"] });
     },
   });

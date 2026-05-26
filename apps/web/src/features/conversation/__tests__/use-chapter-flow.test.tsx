@@ -106,7 +106,7 @@ describe("useChapterFlow", () => {
     expect(result.current.targetWords).toEqual(["pass", "exit", "kill"]);
   });
 
-  it("restores a history story draft chapter as pending instead of word selection", async () => {
+  it("restores a history story draft chapter target words for generation", async () => {
     const chapters = [
       chapterListItem("story-history-pending", 1, "completed"),
       chapterListItem("story-history-pending", 2, "completed"),
@@ -127,7 +127,8 @@ describe("useChapterFlow", () => {
 
     expect(result.current.chapterNumber).toBe(3);
     expect(result.current.output).toBeNull();
-    expect(result.current.isPendingDraft).toBe(true);
+    expect(result.current.targetWords).toEqual(["past", "go", "test"]);
+    expect(result.current.isPendingDraft).toBe(false);
     expect(result.current.isGenerating).toBe(false);
     expect(result.current.generationTaskId).toBeNull();
     expect(getChapter).not.toHaveBeenCalledWith("story-history-pending", 3);
@@ -259,7 +260,7 @@ describe("useChapterFlow", () => {
     expect(generateChapter).not.toHaveBeenCalled();
   });
 
-  it("marks a selected draft chapter as pending instead of returning to word selection", async () => {
+  it("loads target words when selecting an existing draft chapter without starting generation", async () => {
     const chapters = [
       chapterListItem("story-pending", 1, "completed"),
       chapterListItem("story-pending", 2, "draft", null, ["past", "go", "test"]),
@@ -282,7 +283,8 @@ describe("useChapterFlow", () => {
 
     expect(result.current.chapterNumber).toBe(2);
     expect(result.current.output).toBeNull();
-    expect(result.current.isPendingDraft).toBe(true);
+    expect(result.current.targetWords).toEqual(["past", "go", "test"]);
+    expect(result.current.isPendingDraft).toBe(false);
     expect(result.current.isGenerating).toBe(false);
     expect(result.current.generationTaskId).toBeNull();
     expect(getChapter).not.toHaveBeenCalledWith("story-pending", 2);

@@ -202,12 +202,12 @@ describe("Chapter Flow Integration", () => {
     expect(labels.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders new story dialog", () => {
+  it("renders new story dialog without target words", () => {
     render(
       <NewStoryDialog open={true} onClose={vi.fn()} onSubmit={vi.fn()} />,
     );
     expect(screen.getByText("新建故事")).toBeInTheDocument();
-    expect(screen.getByLabelText("目标单词")).toBeInTheDocument();
+    expect(screen.queryByLabelText("目标单词")).not.toBeInTheDocument();
     expect(screen.getByText("故事风格")).toBeInTheDocument();
   });
 
@@ -258,11 +258,30 @@ describe("Chapter Flow Integration", () => {
     expect(screen.getByLabelText("目标词")).toBeInTheDocument();
   });
 
-  it("shows only pending status when selecting an existing draft chapter", async () => {
+  it("shows target words and can confirm generation when selecting an existing draft chapter", async () => {
     mockStoryApp([
       chapterListItem(1),
       draftChapterListItem(2, ["past", "go", "test"]),
     ]);
+    const submitChapterTargetWords = vi.spyOn(apiClient, "submitChapterTargetWords").mockResolvedValue({
+      id: "chapter-2",
+      storyProjectId: story.id,
+      chapterNumber: 2,
+      status: "draft",
+      output: {
+        englishContent: "",
+        highlightedTargetWords: [],
+        chineseTranslation: "",
+      },
+    });
+    const generateChapter = vi.spyOn(apiClient, "generateChapter").mockResolvedValue({
+      id: "task-draft-2",
+      chapterId: "chapter-2",
+      status: "queued",
+      retryCount: 0,
+      createdAt: "2026-05-20T00:00:00Z",
+      updatedAt: "2026-05-20T00:00:00Z",
+    });
 
     render(<App />);
     fireEvent.click(await findStorySelectionButton());
@@ -273,14 +292,27 @@ describe("Chapter Flow Integration", () => {
     await waitFor(() => {
       expect(screen.getByText("第 2 章 / 共 3 章")).toBeInTheDocument();
     });
-    expect(screen.getAllByText("待生成").length).toBeGreaterThanOrEqual(2);
-    expect(screen.queryByLabelText("目标词")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "从词库选择" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "确认目标词" })).not.toBeInTheDocument();
-    expect(screen.queryByText("past")).not.toBeInTheDocument();
+    expect(screen.getByText("待生成")).toBeInTheDocument();
+    expect(screen.getByLabelText("目标词")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "从词库选择" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认目标词" })).toBeInTheDocument();
+    expect(screen.getAllByText("past").length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "确认目标词" }));
+
+    await waitFor(() => {
+      expect(generateChapter).toHaveBeenCalledWith(story.id, 2);
+    });
+    expect(submitChapterTargetWords).toHaveBeenCalledWith(story.id, 2, {
+      words: [
+        { word: "past", source: "manual" },
+        { word: "go", source: "manual" },
+        { word: "test", source: "manual" },
+      ],
+    });
   });
 
-  it("shows only pending status when opening a history story on a draft chapter", async () => {
+  it("shows target words when opening a history story on a draft chapter", async () => {
     const historyStory = storyWithCurrentChapter(3);
     mockStoryAppWithStory(historyStory, [
       chapterListItem(1),
@@ -294,10 +326,49 @@ describe("Chapter Flow Integration", () => {
     await waitFor(() => {
       expect(screen.getByText("第 3 章 / 共 3 章")).toBeInTheDocument();
     });
-    expect(screen.getAllByText("待生成").length).toBeGreaterThanOrEqual(2);
-    expect(screen.queryByLabelText("目标词")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "从词库选择" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "确认目标词" })).not.toBeInTheDocument();
-    expect(screen.queryByText("past")).not.toBeInTheDocument();
+    expect(screen.getByText("待生成")).toBeInTheDocument();
+    expect(screen.getByLabelText("目标词")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "从词库选择" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认目标词" })).toBeInTheDocument();
+    expect(screen.getAllByText("past").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("creates a story without target words and shows first chapter target word input", async () => {
+    sessionStorage.setItem("vsl_token", "test-token");
+    const createdStory: StoryProjectResponse = {
+      ...story,
+      id: "story-new",
+      title: "网络爽文词汇故事",
+      currentChapterNumber: 1,
+    };
+    vi.spyOn(apiClient, "listStoryProjects")
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([createdStory]);
+    vi.spyOn(apiClient, "createStoryProject").mockResolvedValue(createdStory);
+    vi.spyOn(apiClient, "listChapters").mockResolvedValue([]);
+    vi.spyOn(apiClient, "getChapter").mockRejectedValue(new Error("not found"));
+    const submitChapterTargetWords = vi.spyOn(apiClient, "submitChapterTargetWords").mockResolvedValue({
+      id: "chapter-1",
+      storyProjectId: createdStory.id,
+      chapterNumber: 1,
+      status: "draft",
+      output: {
+        englishContent: "",
+        highlightedTargetWords: [],
+        chineseTranslation: "",
+      },
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "新建故事" })[0]);
+    expect(screen.queryByLabelText("目标单词")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "创建故事" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("第 1 章 / 共 3 章")).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("目标词")).toBeInTheDocument();
+    expect(submitChapterTargetWords).not.toHaveBeenCalled();
   });
 });

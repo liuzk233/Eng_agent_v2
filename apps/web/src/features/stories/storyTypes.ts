@@ -17,7 +17,6 @@ export interface StoryProject {
 }
 
 export interface NewStoryInput {
-  targetWords: string[];
   style: StoryStyle;
   targetChapterCount: number;
 }

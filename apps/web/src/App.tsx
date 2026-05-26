@@ -47,13 +47,12 @@ function StoryApp() {
   const { stories, isLoading, createStory, renameStory, isRenaming } = useStories(apiClient);
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [draftTargetWordsByStoryId, setDraftTargetWordsByStoryId] = useState<Record<string, string[]>>({});
 
   const selectedStory = stories.find((s) => s.id === selectedStoryId) ?? null;
   const chapterFlow = useChapterFlow(
     apiClient,
     selectedStoryId,
-    selectedStoryId ? draftTargetWordsByStoryId[selectedStoryId] ?? [] : [],
+    [],
     selectedStory?.currentChapterNumber ?? 1,
   );
   const generationTask = useGenerationTask(apiClient, chapterFlow.generationTaskId);
@@ -77,17 +76,10 @@ function StoryApp() {
   const handleCreateStory = useCallback(
     async (input: NewStoryInput) => {
       const created = await createStory({
-        title: generateStoryTitle(input.targetWords),
+        title: generateStoryTitle(input.style),
         style: input.style,
         targetChapterCount: input.targetChapterCount,
       });
-      await apiClient.submitChapterTargetWords(created.id, 1, {
-        words: input.targetWords.map((word) => ({ word, source: "manual" })),
-      });
-      setDraftTargetWordsByStoryId((current) => ({
-        ...current,
-        [created.id]: input.targetWords,
-      }));
       setDialogOpen(false);
       setSelectedStoryId(created.id);
     },
@@ -134,13 +126,6 @@ function StoryApp() {
 
       {chapterFlow.targetWords.length > 0 && !chapterFlow.isPendingDraft && (
         <UserWordsCard words={chapterFlow.targetWords} />
-      )}
-
-      {chapterFlow.isPendingDraft && (
-        <div className="gen-status-indicator" role="status" aria-live="polite">
-          <span className="gen-status-dot gen-status--queued" />
-          <span className="gen-status-label text-label">待生成</span>
-        </div>
       )}
 
       {chapterFlow.generationStatus && (
@@ -249,10 +234,11 @@ export function App() {
   );
 }
 
-function generateStoryTitle(targetWords: string[]): string {
-  const previewWords = targetWords.slice(0, 3).join(", ");
-  if (targetWords.length <= 3) {
-    return `${previewWords} 词汇故事`;
-  }
-  return `${previewWords} 等 ${targetWords.length} 个词的故事`;
+function generateStoryTitle(style: NewStoryInput["style"]): string {
+  const styleLabel = {
+    web_novel: "网络爽文",
+    science_fiction: "科幻小说",
+    exam_reading: "应试阅读",
+  }[style];
+  return `${styleLabel}词汇故事`;
 }

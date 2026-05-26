@@ -332,12 +332,9 @@ describe("NewStoryDialog", () => {
     render(
       <NewStoryDialog open={true} onClose={vi.fn()} onSubmit={onSubmit} />,
     );
-    fireEvent.change(screen.getByLabelText("目标单词"), {
-      target: { value: "courage, adventure courage" },
-    });
     fireEvent.click(screen.getByRole("button", { name: "创建故事" }));
     expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ targetWords: ["courage", "adventure"], style: "web_novel" }),
+      expect.objectContaining({ style: "web_novel", targetChapterCount: 5 }),
     );
   });
 });
