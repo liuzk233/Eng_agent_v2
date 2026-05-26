@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
 import { renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
-import { useGenerationTask } from "../useGenerationTask";
+import { parseGenerationTaskTimestamp, useGenerationTask } from "../useGenerationTask";
 import type { ApiClient } from "../../../lib/api/client";
 import type { GenerationTaskResponse } from "../../../lib/api/types";
 
@@ -34,6 +34,16 @@ function wrapper({ children }: { children: React.ReactNode }) {
 }
 
 describe("useGenerationTask", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("parses API timestamps without timezone as UTC", () => {
+    expect(parseGenerationTaskTimestamp("2026-05-26T02:57:58")).toBe(
+      new Date("2026-05-26T02:57:58Z").getTime(),
+    );
+  });
+
   it("returns task data when taskId is provided", async () => {
     const task = makeTask();
     const client = makeClient(task);
@@ -126,6 +136,23 @@ describe("useGenerationTask", () => {
   it("isStale is false when task is polling and createdAt is within threshold", async () => {
     const recentTime = new Date(Date.now() - 60_000).toISOString(); // 1 minute ago
     const task = makeTask({ status: "running", createdAt: recentTime });
+    const client = makeClient(task);
+
+    const { result } = renderHook(() => useGenerationTask(client, "task-1"), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.task).not.toBeNull();
+    });
+
+    expect(result.current.isStale).toBe(false);
+  });
+
+  it("isStale is false for recent UTC API timestamps without timezone", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-05-26T03:00:00Z").getTime());
+    const task = makeTask({
+      status: "running",
+      createdAt: "2026-05-26T02:57:58",
+    });
     const client = makeClient(task);
 
     const { result } = renderHook(() => useGenerationTask(client, "task-1"), { wrapper });

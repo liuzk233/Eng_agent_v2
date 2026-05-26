@@ -10,6 +10,19 @@ const POLLING_STATUSES: GenerationStatus[] = [
 ];
 
 const STALE_THRESHOLD_MS = 300_000; // 5 minutes
+const TIMEZONE_SUFFIX_PATTERN = /(Z|[+-]\d{2}:?\d{2})$/i;
+
+export function parseGenerationTaskTimestamp(timestamp: string): number {
+  const normalizedTimestamp = TIMEZONE_SUFFIX_PATTERN.test(timestamp)
+    ? timestamp
+    : `${timestamp}Z`;
+  return new Date(normalizedTimestamp).getTime();
+}
+
+function isGenerationTaskStale(createdAt: string | undefined): boolean {
+  if (!createdAt) return false;
+  return Date.now() - parseGenerationTaskTimestamp(createdAt) > STALE_THRESHOLD_MS;
+}
 
 export function useGenerationTask(
   apiClient: ApiClient,
@@ -23,7 +36,7 @@ export function useGenerationTask(
       const status = query.state.data?.status;
       if (!status || !POLLING_STATUSES.includes(status)) return false;
       const createdAt = query.state.data?.createdAt;
-      if (createdAt && Date.now() - new Date(createdAt).getTime() > STALE_THRESHOLD_MS) {
+      if (isGenerationTaskStale(createdAt)) {
         return false;
       }
       return 3000;
@@ -38,8 +51,7 @@ export function useGenerationTask(
   const isStale = !!(
     query.data?.status &&
     POLLING_STATUSES.includes(query.data.status) &&
-    query.data.createdAt &&
-    Date.now() - new Date(query.data.createdAt).getTime() > STALE_THRESHOLD_MS
+    isGenerationTaskStale(query.data.createdAt)
   );
 
   const isTerminal = !!(
