@@ -283,7 +283,7 @@ describe("Chapter Flow Integration", () => {
       updatedAt: "2026-05-20T00:00:00Z",
     });
 
-    render(<App />);
+    const { container } = render(<App />);
     fireEvent.click(await findStorySelectionButton());
     await screen.findByText("她展现了勇气。");
 
@@ -296,6 +296,7 @@ describe("Chapter Flow Integration", () => {
     expect(screen.getByLabelText("目标词")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "从词库选择" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认目标词" })).toBeInTheDocument();
+    expect(container.querySelector(".user-words-card")).not.toBeInTheDocument();
     expect(screen.getAllByText("past").length).toBeGreaterThanOrEqual(1);
 
     fireEvent.click(screen.getByRole("button", { name: "确认目标词" }));

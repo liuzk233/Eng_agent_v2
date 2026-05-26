@@ -11,7 +11,6 @@ import { useChapterFlow } from "./features/conversation/useChapterFlow";
 import { AppShell } from "./features/conversation/AppShell";
 import { ConversationView } from "./features/conversation/ConversationView";
 import { SetupCard } from "./features/conversation/cards/SetupCard";
-import { UserWordsCard } from "./features/conversation/cards/UserWordsCard";
 import { ChapterCard } from "./features/conversation/cards/ChapterCard";
 import { ReviewCard } from "./features/conversation/cards/ReviewCard";
 import { TargetWordsInputDock } from "./features/conversation/TargetWordsInputDock";
@@ -123,10 +122,6 @@ function StoryApp() {
       <div className="chapter-progress text-supporting">
         第 {chapterFlow.chapterNumber} 章 / 共 {selectedStory.targetChapterCount} 章
       </div>
-
-      {chapterFlow.targetWords.length > 0 && !chapterFlow.isPendingDraft && (
-        <UserWordsCard words={chapterFlow.targetWords} />
-      )}
 
       {chapterFlow.generationStatus && (
         <GenerationStatusIndicator
