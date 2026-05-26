@@ -47,3 +47,10 @@ class StoryProjectService:
         self.repository.session.commit()
         self.repository.session.refresh(project)
         return project
+
+    def delete_story_project(self, user: User, story_project_id: UUID) -> None:
+        deleted = self.repository.delete_story_project_for_user(user, story_project_id)
+        if not deleted:
+            raise StoryProjectError("Story project not found", 404)
+
+        self.repository.session.commit()

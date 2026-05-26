@@ -1,9 +1,11 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.models.auth import User
+from app.models.generation import GenerationTask, QualityReport
+from app.models.progress import LearningProgress
 from app.models.story import Chapter, StoryBible, StoryProject
 
 
@@ -88,6 +90,41 @@ class StoryProjectRepository:
         project.title = title
         self.session.flush()
         return project
+
+    def delete_story_project_for_user(self, user: User, story_project_id: UUID) -> bool:
+        project = self.get_story_project_for_user(user, story_project_id)
+        if project is None:
+            return False
+
+        chapter_ids = list(
+            self.session.scalars(
+                select(Chapter.id).where(Chapter.story_project_id == story_project_id)
+            )
+        )
+        if chapter_ids:
+            generation_task_ids = list(
+                self.session.scalars(
+                    select(GenerationTask.id).where(GenerationTask.chapter_id.in_(chapter_ids))
+                )
+            )
+            if generation_task_ids:
+                self.session.execute(
+                    delete(QualityReport).where(
+                        QualityReport.generation_task_id.in_(generation_task_ids)
+                    )
+                )
+                self.session.execute(
+                    delete(GenerationTask).where(GenerationTask.id.in_(generation_task_ids))
+                )
+            self.session.execute(
+                update(LearningProgress)
+                .where(LearningProgress.last_seen_chapter_id.in_(chapter_ids))
+                .values(last_seen_chapter_id=None)
+            )
+
+        self.session.delete(project)
+        self.session.flush()
+        return True
 
 
 def _build_initial_main_plot(

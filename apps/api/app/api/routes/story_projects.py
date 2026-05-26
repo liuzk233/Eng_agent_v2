@@ -62,3 +62,15 @@ def rename_story_project(
         return story_service.rename_story_project(current_user, story_project_id, payload)
     except StoryProjectError as error:
         raise HTTPException(status_code=error.status_code, detail=error.message) from error
+
+
+@router.delete("/{story_project_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_story_project(
+    story_project_id: UUID,
+    current_user: User = Depends(get_current_user),
+    story_service: StoryProjectService = Depends(get_story_project_service),
+) -> None:
+    try:
+        story_service.delete_story_project(current_user, story_project_id)
+    except StoryProjectError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.message) from error

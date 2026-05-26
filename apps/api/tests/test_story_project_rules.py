@@ -10,8 +10,9 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import create_app
 from app.models.auth import InviteCode
-from app.models.generation import GenerationTask
-from app.models.story import Chapter, StoryBible, StoryProject
+from app.models.generation import GenerationTask, QualityReport
+from app.models.progress import LearningProgress
+from app.models.story import Chapter, ChapterState, StoryBible, StoryProject
 from app.models.vocabulary import ChapterTargetWord
 
 
@@ -28,9 +29,12 @@ def make_client() -> tuple[TestClient, sessionmaker]:
             Base.metadata.tables["invite_codes"],
             StoryProject.__table__,
             Chapter.__table__,
+            ChapterState.__table__,
             StoryBible.__table__,
             GenerationTask.__table__,
+            QualityReport.__table__,
             ChapterTargetWord.__table__,
+            LearningProgress.__table__,
         ],
     )
     testing_session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
@@ -261,6 +265,109 @@ def test_rename_story_project_is_scoped_to_current_user() -> None:
     detail = client.get(f"/api/story-projects/{created['id']}", headers=auth_headers(owner_token))
     assert detail.status_code == 200
     assert detail.json()["title"] == "Owner title"
+
+
+def test_delete_story_project_removes_owner_story_and_dependents() -> None:
+    client, testing_session = make_client()
+    token = register_user(client, testing_session, "delete-owner@example.com", "DELETE-OWNER")
+    created = client.post(
+        "/api/story-projects",
+        headers=auth_headers(token),
+        json={"title": "Delete me", "style": "science_fiction", "target_chapter_count": 2},
+    ).json()
+
+    with testing_session() as session:
+        project = session.query(StoryProject).filter_by(title="Delete me").one()
+        chapter = (
+            session.query(Chapter)
+            .filter_by(story_project_id=project.id, chapter_number=1)
+            .one()
+        )
+        task = GenerationTask(chapter_id=chapter.id, status="completed")
+        session.add_all(
+            [
+                ChapterState(chapter_id=chapter.id, summary="A short memory"),
+                ChapterTargetWord(
+                    chapter_id=chapter.id,
+                    word="Adventure",
+                    lemma="adventure",
+                    source="manual",
+                    position=1,
+                ),
+                task,
+                LearningProgress(
+                    user_id=project.user_id,
+                    lemma="adventure",
+                    encounter_count=1,
+                    last_seen_chapter_id=chapter.id,
+                ),
+            ]
+        )
+        session.flush()
+        session.add(
+            QualityReport(
+                generation_task_id=task.id,
+                chapter_id=chapter.id,
+                passed=True,
+            )
+        )
+        session.commit()
+
+    response = client.delete(f"/api/story-projects/{created['id']}", headers=auth_headers(token))
+
+    assert response.status_code == 204
+    assert response.content == b""
+    listing = client.get("/api/story-projects", headers=auth_headers(token))
+    assert listing.status_code == 200
+    assert [project["id"] for project in listing.json()] == []
+
+    with testing_session() as session:
+        assert session.query(StoryProject).count() == 0
+        assert session.query(Chapter).count() == 0
+        assert session.query(ChapterState).count() == 0
+        assert session.query(ChapterTargetWord).count() == 0
+        assert session.query(StoryBible).count() == 0
+        assert session.query(GenerationTask).count() == 0
+        assert session.query(QualityReport).count() == 0
+        progress = session.query(LearningProgress).one()
+
+    assert progress.last_seen_chapter_id is None
+
+
+def test_delete_story_project_returns_404_for_missing_story() -> None:
+    client, testing_session = make_client()
+    token = register_user(client, testing_session, "missing-delete@example.com", "MISSING-DELETE")
+
+    response = client.delete(
+        "/api/story-projects/00000000-0000-0000-0000-000000000000",
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Story project not found"
+
+
+def test_delete_story_project_is_scoped_to_current_user() -> None:
+    client, testing_session = make_client()
+    owner_token = register_user(client, testing_session, "delete-scope-owner@example.com", "DELETE-SCOPE-OWNER")
+    other_token = register_user(client, testing_session, "delete-scope-other@example.com", "DELETE-SCOPE-OTHER")
+    created = client.post(
+        "/api/story-projects",
+        headers=auth_headers(owner_token),
+        json={"title": "Owner story", "style": "web_novel", "target_chapter_count": 1},
+    ).json()
+
+    response = client.delete(
+        f"/api/story-projects/{created['id']}",
+        headers=auth_headers(other_token),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Story project not found"
+
+    detail = client.get(f"/api/story-projects/{created['id']}", headers=auth_headers(owner_token))
+    assert detail.status_code == 200
+    assert detail.json()["title"] == "Owner story"
 
 
 def test_chapter_listing_returns_all_chapter_statuses_for_owner() -> None:
