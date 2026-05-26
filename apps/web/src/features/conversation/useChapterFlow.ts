@@ -44,6 +44,13 @@ function isFailedStatus(status: string): boolean {
   return status === "failed_internal";
 }
 
+const COMPLETED_CHAPTER_LOAD_ATTEMPTS = 5;
+const COMPLETED_CHAPTER_LOAD_RETRY_MS = 1000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function findChapter(chapters: ChapterListItem[], chapterNumber: number): ChapterListItem | undefined {
   return chapters.find((chapter) => chapter.chapterNumber === chapterNumber);
 }
@@ -218,31 +225,42 @@ export function useChapterFlow(
 
   const loadCompletedChapter = useCallback(async () => {
     if (!storyProjectId) return;
-    const [chapter, chapters] = await Promise.all([
-      apiClient.getChapter(storyProjectId, state.chapterNumber).catch(() => null),
-      loadChaptersForStory(apiClient, storyProjectId),
-    ]);
-    if (!chapter?.output?.englishContent || !chapter.output.chineseTranslation) {
-      setState((s) => ({
-        ...s,
-        chapters,
-        output: null,
-        generationStatus: "failed_internal",
-        isGenerating: false,
-        isPendingDraft: false,
-        generationFailureReason: s.generationFailureReason || "章节正文不可用，请重试。",
-      }));
-      return;
+    let latestChapters: ChapterListItem[] = [];
+
+    for (let attempt = 1; attempt <= COMPLETED_CHAPTER_LOAD_ATTEMPTS; attempt += 1) {
+      const [chapter, chapters] = await Promise.all([
+        apiClient.getChapter(storyProjectId, state.chapterNumber).catch(() => null),
+        loadChaptersForStory(apiClient, storyProjectId),
+      ]);
+      latestChapters = chapters;
+
+      if (chapter?.output?.englishContent && chapter.output.chineseTranslation) {
+        setState((s) => ({
+          ...s,
+          chapters,
+          chapterNumber: chapter.chapterNumber,
+          output: chapter.output,
+          generationStatus: chapter.status,
+          isGenerating: false,
+          isPendingDraft: false,
+          generationFailureReason: null,
+        }));
+        return;
+      }
+
+      if (attempt < COMPLETED_CHAPTER_LOAD_ATTEMPTS) {
+        await delay(COMPLETED_CHAPTER_LOAD_RETRY_MS);
+      }
     }
+
     setState((s) => ({
       ...s,
-      chapters,
-      chapterNumber: chapter.chapterNumber,
-      output: chapter.output,
-      generationStatus: chapter.status,
+      chapters: latestChapters,
+      output: null,
+      generationStatus: "failed_internal",
       isGenerating: false,
       isPendingDraft: false,
-      generationFailureReason: null,
+      generationFailureReason: s.generationFailureReason || "章节正文不可用，请重试。",
     }));
   }, [apiClient, storyProjectId, state.chapterNumber]);
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useChapterFlow } from "../useChapterFlow";
 import type { ChapterContentResponse, ChapterLatestGenerationTaskResponse, ChapterListItem } from "../../../lib/api/types";
@@ -66,6 +66,10 @@ function generationTask(
 }
 
 describe("useChapterFlow", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("loads the selected story chapter instead of reusing the previous output", async () => {
     const getChapter = vi.fn()
       .mockResolvedValueOnce(chapterResponse("story-1", "First story **alpha**.", ["alpha"]))
@@ -327,6 +331,37 @@ describe("useChapterFlow", () => {
     expect(result.current.isGenerating).toBe(false);
   });
 
+  it("retries completed chapter loading when output is briefly unavailable", async () => {
+    const runningTask = generationTask("story-delayed-output-chapter-1");
+    const chapters = [
+      chapterListItem("story-delayed-output", 1, "running", runningTask, ["beta"]),
+    ];
+    const getChapter = vi.fn()
+      .mockRejectedValueOnce(new Error("not found"))
+      .mockResolvedValueOnce(chapterResponse("story-delayed-output", "Delayed **beta**.", ["beta"]));
+    const listChapters = vi.fn().mockResolvedValue(chapters);
+    const client = { getChapter, listChapters } as unknown as ApiClient;
+
+    const { result } = renderHook(() =>
+      useChapterFlow(client, "story-delayed-output", [], 1),
+    );
+
+    await waitFor(() => {
+      expect(result.current.generationTaskId).toBe(runningTask.id);
+    });
+
+    const loading = act(async () => {
+      await result.current.loadCompletedChapter();
+    });
+
+    await loading;
+
+    expect(getChapter).toHaveBeenCalledTimes(2);
+    expect(result.current.output?.englishContent).toBe("Delayed **beta**.");
+    expect(result.current.generationStatus).toBe("completed");
+    expect(result.current.generationFailureReason).toBeNull();
+  });
+
   it("restores failed_internal task state without fetching missing output", async () => {
     const failedTask = generationTask("story-failed-chapter-1", "failed_internal", "401 invalid api key");
     const chapters = [
@@ -352,6 +387,7 @@ describe("useChapterFlow", () => {
   });
 
   it("keeps failed status when completed task output is unavailable", async () => {
+    vi.useFakeTimers();
     const chapters = [
       chapterListItem("story-missing-output", 1, "fallback_completed", null, ["adventure"]),
     ];
@@ -364,9 +400,12 @@ describe("useChapterFlow", () => {
     );
 
     await act(async () => {
-      await result.current.loadCompletedChapter();
+      const promise = result.current.loadCompletedChapter();
+      await vi.advanceTimersByTimeAsync(4000);
+      await promise;
     });
 
+    expect(getChapter).toHaveBeenCalledTimes(6);
     expect(result.current.output).toBeNull();
     expect(result.current.isGenerating).toBe(false);
     expect(result.current.generationStatus).toBe("failed_internal");

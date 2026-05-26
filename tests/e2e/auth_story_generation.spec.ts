@@ -19,7 +19,7 @@ function sleep(ms: number): Promise<void> {
 
 async function waitForTerminalTask(client: ApiClient, taskId: string): Promise<GenerationTaskResponse> {
   let lastTask: GenerationTaskResponse | null = null;
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  for (let attempt = 0; attempt < 90; attempt += 1) {
     const task = await client.getGenerationTask(taskId);
     lastTask = task;
     if (["completed", "fallback_completed", "failed_internal"].includes(task.status)) {
