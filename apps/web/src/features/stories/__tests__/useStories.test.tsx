@@ -21,10 +21,15 @@ function makeStory(overrides: Partial<StoryProjectResponse> = {}): StoryProjectR
   };
 }
 
-function makeClient(stories: StoryProjectResponse[], renamedStory: StoryProjectResponse) {
+function makeClient(
+  stories: StoryProjectResponse[],
+  renamedStory: StoryProjectResponse,
+  deleteStoryProject = vi.fn().mockResolvedValue(undefined),
+) {
   return {
     listStoryProjects: vi.fn().mockResolvedValue(stories),
     renameStoryProject: vi.fn().mockResolvedValue(renamedStory),
+    deleteStoryProject,
   } as unknown as ApiClient;
 }
 
@@ -75,5 +80,63 @@ describe("useStories", () => {
         updatedAt: "2026-05-25T04:30:00.000Z",
       });
     });
+  });
+
+  it("deletes a story through the API client and removes it from the storyProjects cache", async () => {
+    const deletedStory = makeStory();
+    const remainingStory = makeStory({ id: "story-2", title: "Keep title" });
+    const deleteStoryProject = vi.fn().mockResolvedValue(undefined);
+    const client = {
+      listStoryProjects: vi
+        .fn()
+        .mockResolvedValueOnce([deletedStory, remainingStory])
+        .mockResolvedValue([remainingStory]),
+      renameStoryProject: vi.fn().mockResolvedValue(deletedStory),
+      deleteStoryProject,
+    } as unknown as ApiClient;
+    const { queryClient, wrapper } = createWrapper();
+
+    const { result } = renderHook(() => useStories(client), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.stories).toHaveLength(2);
+    });
+
+    await act(async () => {
+      await result.current.deleteStory("story-1");
+    });
+
+    expect(deleteStoryProject).toHaveBeenCalledWith("story-1");
+    expect(queryClient.getQueryData<StoryProjectResponse[]>(["storyProjects"])).toEqual([
+      remainingStory,
+    ]);
+    await waitFor(() => {
+      expect(result.current.stories).toEqual([remainingStory]);
+    });
+  });
+
+  it("keeps the storyProjects cache unchanged when deleting a story fails", async () => {
+    const originalStory = makeStory();
+    const otherStory = makeStory({ id: "story-2", title: "Other title" });
+    const deleteStoryProject = vi.fn().mockRejectedValue(new Error("delete failed"));
+    const client = makeClient([originalStory, otherStory], originalStory, deleteStoryProject);
+    const { queryClient, wrapper } = createWrapper();
+
+    const { result } = renderHook(() => useStories(client), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.stories).toHaveLength(2);
+    });
+
+    await expect(
+      act(async () => {
+        await result.current.deleteStory("story-1");
+      }),
+    ).rejects.toThrow("delete failed");
+
+    expect(queryClient.getQueryData<StoryProjectResponse[]>(["storyProjects"])).toEqual([
+      originalStory,
+      otherStory,
+    ]);
   });
 });

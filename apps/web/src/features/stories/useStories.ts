@@ -7,6 +7,10 @@ interface RenameStoryVariables {
   title: string;
 }
 
+interface DeleteStoryVariables {
+  storyProjectId: string;
+}
+
 export function useStories(apiClient: ApiClient) {
   const queryClient = useQueryClient();
 
@@ -47,6 +51,20 @@ export function useStories(apiClient: ApiClient) {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: ({ storyProjectId }: DeleteStoryVariables) =>
+      apiClient.deleteStoryProject(storyProjectId),
+    onSuccess: (_, { storyProjectId }) => {
+      queryClient.setQueryData<StoryProjectResponse[]>(["storyProjects"], (current) => {
+        if (!current) {
+          return current;
+        }
+        return current.filter((story) => story.id !== storyProjectId);
+      });
+      queryClient.invalidateQueries({ queryKey: ["storyProjects"] });
+    },
+  });
+
   return {
     stories: listQuery.data ?? [],
     isLoading: listQuery.isLoading,
@@ -55,5 +73,8 @@ export function useStories(apiClient: ApiClient) {
     renameStory: (storyProjectId: string, title: string) =>
       renameMutation.mutateAsync({ storyProjectId, title }),
     isRenaming: renameMutation.isPending,
+    deleteStory: (storyProjectId: string) =>
+      deleteMutation.mutateAsync({ storyProjectId }),
+    isDeleting: deleteMutation.isPending,
   };
 }

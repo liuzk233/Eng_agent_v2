@@ -111,6 +111,27 @@ describe("ApiClient", () => {
     );
   });
 
+  it("deletes story projects with DELETE and accepts an empty 204 response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const client = createApiClient({
+      baseUrl: "https://api.example.test",
+      getAccessToken: () => "jwt-token",
+      fetcher: fetchMock,
+    });
+
+    await expect(client.deleteStoryProject("story-1")).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.test/api/story-projects/story-1",
+      expect.objectContaining({
+        method: "DELETE",
+        headers: expect.objectContaining({
+          Authorization: "Bearer jwt-token",
+        }),
+      }),
+    );
+  });
+
   it("reads the default JWT token from sessionStorage", async () => {
     sessionStorage.setItem("vsl_token", "stored-jwt-token");
     const fetchMock = vi.fn().mockResolvedValue(

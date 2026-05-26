@@ -167,6 +167,10 @@ export class ApiClient {
     });
   }
 
+  async deleteStoryProject(storyProjectId: string): Promise<void> {
+    await this.request<null>(`/story-projects/${storyProjectId}`, { method: "DELETE" });
+  }
+
   listStoryProjects(): Promise<StoryProjectResponse[]> {
     return this.request<StoryProjectResponse[]>("/story-projects");
   }
