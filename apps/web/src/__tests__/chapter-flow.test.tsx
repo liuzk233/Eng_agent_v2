@@ -331,6 +331,66 @@ describe("Chapter Flow Integration", () => {
     });
   });
 
+  it("can return to a generating chapter after viewing another chapter", async () => {
+    const freshTaskTimestamp = new Date().toISOString();
+    const runningChapter: ChapterListItem = {
+      ...draftChapterListItem(2, ["past", "go", "test"]),
+      status: "running",
+      latestGenerationTask: {
+        id: "task-running-2",
+        chapterId: "chapter-2",
+        status: "running",
+        retryCount: 0,
+        createdAt: freshTaskTimestamp,
+        updatedAt: freshTaskTimestamp,
+      },
+    };
+    mockStoryApp([
+      chapterListItem(1),
+      runningChapter,
+    ]);
+    vi.spyOn(apiClient, "getGenerationTask").mockResolvedValue({
+      id: "task-running-2",
+      chapterId: "chapter-2",
+      status: "running",
+      retryCount: 0,
+      createdAt: freshTaskTimestamp,
+      updatedAt: freshTaskTimestamp,
+    });
+
+    render(<App />);
+    fireEvent.click(await findStorySelectionButton());
+
+    await screen.findByText("她展现了勇气。");
+    fireEvent.click(await screen.findByRole("button", {
+      name: /^第 2 章\s*生成中$/,
+    }));
+
+    await waitFor(() => {
+      expect(screen.getByText("第 2 章 / 共 3 章")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("生成中");
+
+    fireEvent.click(screen.getByRole("button", {
+      name: /^第 1 章\s*已完成$/,
+    }));
+
+    await waitFor(() => {
+      expect(screen.getByText("第 1 章 / 共 3 章")).toBeInTheDocument();
+    });
+    expect(screen.getByText("她展现了勇气。")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", {
+      name: /^第 2 章\s*生成中$/,
+    }));
+
+    await waitFor(() => {
+      expect(screen.getByText("第 2 章 / 共 3 章")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("生成中");
+    expect(screen.queryByLabelText("目标词")).not.toBeInTheDocument();
+  });
+
   it("shows target words when opening a history story on a draft chapter", async () => {
     const historyStory = storyWithCurrentChapter(3);
     mockStoryAppWithStory(historyStory, [

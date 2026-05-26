@@ -2,7 +2,7 @@
 
 - active_change: generation-nav-generating-state
 - current_stage: DEV
-- current_task: T01
+- current_task: T-FIX-01
 - ai_context_doc: .specs/CONTEXT.md
 - interrupted_task: none
 - last_intel_scan: none

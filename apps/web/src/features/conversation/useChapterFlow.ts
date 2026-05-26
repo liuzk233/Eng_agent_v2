@@ -375,7 +375,16 @@ export function useChapterFlow(
     } catch {
       // Draft or in-progress chapters can return 404 before output exists.
     }
-  }, [apiClient, storyProjectId, state.chapters]);
+  }, [
+    apiClient,
+    storyProjectId,
+    state.chapterNumber,
+    state.chapters,
+    state.generationStatus,
+    state.generationTaskId,
+    state.isGenerating,
+    state.output,
+  ]);
 
   return {
     ...state,

@@ -412,6 +412,46 @@ describe("useChapterFlow", () => {
     expect(getChapter).not.toHaveBeenCalled();
   });
 
+  it("restores a generating chapter after navigating away to a completed chapter", async () => {
+    const runningTask = generationTask("story-return-generating-chapter-2");
+    const chapters = [
+      chapterListItem("story-return-generating", 1, "completed"),
+      chapterListItem("story-return-generating", 2, "running", runningTask, ["past"]),
+    ];
+    const getChapter = vi.fn()
+      .mockResolvedValueOnce(chapterResponse("story-return-generating", "Chapter one **word**.", ["word"], 1));
+    const listChapters = vi.fn().mockResolvedValue(chapters);
+    const client = { getChapter, listChapters } as unknown as ApiClient;
+
+    const { result } = renderHook(() =>
+      useChapterFlow(client, "story-return-generating", [], 2),
+    );
+
+    await waitFor(() => {
+      expect(result.current.isGenerating).toBe(true);
+    });
+
+    await act(async () => {
+      await result.current.selectChapter(1);
+    });
+
+    expect(result.current.chapterNumber).toBe(1);
+    expect(result.current.output?.englishContent).toBe("Chapter one **word**.");
+
+    getChapter.mockClear();
+
+    await act(async () => {
+      await result.current.selectChapter(2);
+    });
+
+    expect(result.current.chapterNumber).toBe(2);
+    expect(result.current.output).toBeNull();
+    expect(result.current.isGenerating).toBe(true);
+    expect(result.current.generationTaskId).toBe(runningTask.id);
+    expect(result.current.generationStatus).toBe("running");
+    expect(getChapter).not.toHaveBeenCalledWith("story-return-generating", 2);
+  });
+
   it("loads a completed chapter after a restored running task finishes", async () => {
     const runningTask = generationTask("story-finish-chapter-2");
     const chapters = [
