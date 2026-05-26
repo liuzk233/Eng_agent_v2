@@ -274,13 +274,22 @@ describe("Chapter Flow Integration", () => {
         chineseTranslation: "",
       },
     });
+    const freshTaskTimestamp = new Date().toISOString();
     const generateChapter = vi.spyOn(apiClient, "generateChapter").mockResolvedValue({
       id: "task-draft-2",
       chapterId: "chapter-2",
       status: "queued",
       retryCount: 0,
-      createdAt: "2026-05-20T00:00:00Z",
-      updatedAt: "2026-05-20T00:00:00Z",
+      createdAt: freshTaskTimestamp,
+      updatedAt: freshTaskTimestamp,
+    });
+    vi.spyOn(apiClient, "getGenerationTask").mockResolvedValue({
+      id: "task-draft-2",
+      chapterId: "chapter-2",
+      status: "queued",
+      retryCount: 0,
+      createdAt: freshTaskTimestamp,
+      updatedAt: freshTaskTimestamp,
     });
 
     const { container } = render(<App />);
@@ -304,6 +313,15 @@ describe("Chapter Flow Integration", () => {
     await waitFor(() => {
       expect(generateChapter).toHaveBeenCalledWith(story.id, 2);
     });
+    const generatingChapterButton = await screen.findByRole("button", {
+      name: /^第 2 章\s*生成中$/,
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("排队中");
+
+    fireEvent.click(generatingChapterButton);
+
+    expect(screen.getByRole("status")).toHaveTextContent("排队中");
+    expect(screen.queryByLabelText("目标词")).not.toBeInTheDocument();
     expect(submitChapterTargetWords).toHaveBeenCalledWith(story.id, 2, {
       words: [
         { word: "past", source: "manual" },

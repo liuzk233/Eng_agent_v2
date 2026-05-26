@@ -297,6 +297,121 @@ describe("useChapterFlow", () => {
     expect(generateChapter).not.toHaveBeenCalled();
   });
 
+  it("syncs the current draft chapter nav state while generation starts", async () => {
+    const chapters = [
+      chapterListItem("story-nav-generating", 1, "completed"),
+      chapterListItem("story-nav-generating", 2, "draft", null, ["past", "go", "test"]),
+    ];
+    const getChapter = vi.fn()
+      .mockResolvedValueOnce(chapterResponse("story-nav-generating", "Chapter one **word**.", ["word"], 1));
+    const listChapters = vi.fn().mockResolvedValue(chapters);
+    const submitChapterTargetWords = vi.fn().mockResolvedValue({
+      id: "story-nav-generating-chapter-2",
+      storyProjectId: "story-nav-generating",
+      chapterNumber: 2,
+      status: "draft",
+      output: {
+        englishContent: "",
+        highlightedTargetWords: [],
+        chineseTranslation: "",
+      },
+    });
+    const generateChapter = vi.fn().mockResolvedValue({
+      id: "task-nav-generating-2",
+      chapterId: "story-nav-generating-chapter-2",
+      status: "queued",
+      retryCount: 0,
+      createdAt: "2026-05-26T00:00:00Z",
+      updatedAt: "2026-05-26T00:00:00Z",
+    });
+    const client = {
+      getChapter,
+      listChapters,
+      submitChapterTargetWords,
+      generateChapter,
+    } as unknown as ApiClient;
+
+    const { result } = renderHook(() =>
+      useChapterFlow(client, "story-nav-generating"),
+    );
+
+    await waitFor(() => {
+      expect(result.current.chapters).toHaveLength(2);
+    });
+
+    await act(async () => {
+      await result.current.selectChapter(2);
+    });
+
+    await act(async () => {
+      await result.current.submitWords();
+    });
+
+    expect(result.current.isGenerating).toBe(true);
+    expect(result.current.generationStatus).toBe("queued");
+    expect(result.current.chapters[1].status).toBe("queued");
+    expect(result.current.chapters[1].latestGenerationTask).toBeNull();
+
+    await act(async () => {
+      await result.current.startGeneration();
+    });
+
+    expect(generateChapter).toHaveBeenCalledWith("story-nav-generating", 2);
+    expect(result.current.chapters[1].status).toBe("queued");
+    expect(result.current.chapters[1].latestGenerationTask?.id).toBe("task-nav-generating-2");
+  });
+
+  it("does not reset to target-word input state when clicking the active queued chapter", async () => {
+    const chapters = [
+      chapterListItem("story-active-queued", 1, "completed"),
+      chapterListItem("story-active-queued", 2, "draft", null, ["past", "go", "test"]),
+    ];
+    const getChapter = vi.fn()
+      .mockResolvedValueOnce(chapterResponse("story-active-queued", "Chapter one **word**.", ["word"], 1));
+    const listChapters = vi.fn().mockResolvedValue(chapters);
+    const submitChapterTargetWords = vi.fn().mockResolvedValue({
+      id: "story-active-queued-chapter-2",
+      storyProjectId: "story-active-queued",
+      chapterNumber: 2,
+      status: "draft",
+      output: {
+        englishContent: "",
+        highlightedTargetWords: [],
+        chineseTranslation: "",
+      },
+    });
+    const client = {
+      getChapter,
+      listChapters,
+      submitChapterTargetWords,
+    } as unknown as ApiClient;
+
+    const { result } = renderHook(() =>
+      useChapterFlow(client, "story-active-queued"),
+    );
+
+    await waitFor(() => {
+      expect(result.current.chapters).toHaveLength(2);
+    });
+
+    await act(async () => {
+      await result.current.selectChapter(2);
+      await result.current.submitWords();
+    });
+
+    getChapter.mockClear();
+
+    await act(async () => {
+      await result.current.selectChapter(2);
+    });
+
+    expect(result.current.chapterNumber).toBe(2);
+    expect(result.current.isGenerating).toBe(true);
+    expect(result.current.generationStatus).toBe("queued");
+    expect(result.current.chapters[1].status).toBe("queued");
+    expect(getChapter).not.toHaveBeenCalled();
+  });
+
   it("loads a completed chapter after a restored running task finishes", async () => {
     const runningTask = generationTask("story-finish-chapter-2");
     const chapters = [

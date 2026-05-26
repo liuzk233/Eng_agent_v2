@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import type { ChapterListItem, ChapterOutput, GenerationTaskResponse } from "../../lib/api/types";
+import type { ChapterLatestGenerationTaskResponse, ChapterListItem, ChapterOutput, GenerationStatus, GenerationTaskResponse } from "../../lib/api/types";
 import { ApiClient } from "../../lib/api/client";
 
 export interface ChapterFlowState {
@@ -42,6 +42,27 @@ function isPollingStatus(status: string): boolean {
 
 function isFailedStatus(status: string): boolean {
   return status === "failed_internal";
+}
+
+function syncChapterGenerationStatus(
+  chapters: ChapterListItem[],
+  chapterNumber: number,
+  status: GenerationStatus,
+  latestGenerationTask?: ChapterLatestGenerationTaskResponse | null,
+): ChapterListItem[] {
+  return chapters.map((chapter) => {
+    if (chapter.chapterNumber !== chapterNumber) return chapter;
+    return {
+      ...chapter,
+      status,
+      hasOutput: status === "completed" || status === "fallback_completed"
+        ? chapter.hasOutput
+        : false,
+      latestGenerationTask: latestGenerationTask === undefined
+        ? chapter.latestGenerationTask ?? null
+        : latestGenerationTask,
+    };
+  });
 }
 
 const COMPLETED_CHAPTER_LOAD_ATTEMPTS = 5;
@@ -177,7 +198,14 @@ export function useChapterFlow(
 
   const submitWords = useCallback(async () => {
     if (!storyProjectId || state.targetWords.length === 0) return;
-    setState((s) => ({ ...s, isPendingDraft: false, isGenerating: true, generationStatus: "queued", generationFailureReason: null }));
+    setState((s) => ({
+      ...s,
+      chapters: syncChapterGenerationStatus(s.chapters, s.chapterNumber, "queued", null),
+      isPendingDraft: false,
+      isGenerating: true,
+      generationStatus: "queued",
+      generationFailureReason: null,
+    }));
     try {
       await apiClient.submitChapterTargetWords(storyProjectId, state.chapterNumber, {
         words: state.targetWords.map((w) => ({ word: w, source: "manual" })),
@@ -189,11 +217,20 @@ export function useChapterFlow(
 
   const startGeneration = useCallback(async () => {
     if (!storyProjectId) return;
-    setState((s) => ({ ...s, output: null, isPendingDraft: false, isGenerating: true, generationStatus: "running", generationFailureReason: null }));
+    setState((s) => ({
+      ...s,
+      chapters: syncChapterGenerationStatus(s.chapters, s.chapterNumber, "running"),
+      output: null,
+      isPendingDraft: false,
+      isGenerating: true,
+      generationStatus: "running",
+      generationFailureReason: null,
+    }));
     try {
       const result = await apiClient.generateChapter(storyProjectId, state.chapterNumber);
       setState((s) => ({
         ...s,
+        chapters: syncChapterGenerationStatus(s.chapters, s.chapterNumber, result.status, result),
         generationTaskId: result.id,
         generationStatus: result.status,
         retryCount: result.retryCount,
@@ -214,6 +251,7 @@ export function useChapterFlow(
     if (!task) return;
     setState((s) => ({
       ...s,
+      chapters: syncChapterGenerationStatus(s.chapters, s.chapterNumber, task.status, task),
       generationTaskId: task.id,
       generationStatus: task.status,
       retryCount: task.retryCount,
@@ -270,11 +308,18 @@ export function useChapterFlow(
 
   const retryGeneration = useCallback(async () => {
     if (!storyProjectId) return;
-    setState((s) => ({ ...s, isGenerating: true, generationStatus: "running", generationFailureReason: null }));
+    setState((s) => ({
+      ...s,
+      chapters: syncChapterGenerationStatus(s.chapters, s.chapterNumber, "running"),
+      isGenerating: true,
+      generationStatus: "running",
+      generationFailureReason: null,
+    }));
     try {
       const result = await apiClient.generateChapter(storyProjectId, state.chapterNumber);
       setState((s) => ({
         ...s,
+        chapters: syncChapterGenerationStatus(s.chapters, s.chapterNumber, result.status, result),
         generationTaskId: result.id,
         generationStatus: result.status,
         retryCount: result.retryCount,
@@ -293,7 +338,10 @@ export function useChapterFlow(
 
   const selectChapter = useCallback(async (chapterNumber: number) => {
     if (!storyProjectId) return;
-    if (chapterNumber === state.chapterNumber && (state.output || state.generationTaskId)) {
+    if (
+      chapterNumber === state.chapterNumber &&
+      (state.output || state.generationTaskId || state.isGenerating || (state.generationStatus && isPollingStatus(state.generationStatus)))
+    ) {
       return;
     }
     const selectedChapter = findChapter(state.chapters, chapterNumber);
