@@ -71,3 +71,4 @@ apps/web/package-lock.json
 .specs
 
 .codex/
+.playwright-cli/
